@@ -1,6 +1,6 @@
 {
   "$schema": "https://www.raycast.com/schemas/extension.json",
-  "name": "anki",
+  "name": "anki-ai-raycast",
   "title": "Anki",
   "description": "Anki extension for Raycast",
   "icon": "extension-icon.png",
@@ -47,6 +47,149 @@
       "default": "deck",
       "required": false,
       "description": "Can be used to specify the scope for which duplicates are checked"
+    },
+    {
+      "name": "default_deck",
+      "type": "textfield",
+      "required": false,
+      "title": "Default Deck",
+      "description": "Deck name to pre-select when adding cards (overrides remembered value)"
+    },
+    {
+      "name": "default_model",
+      "type": "textfield",
+      "required": false,
+      "title": "Default Note Type",
+      "description": "Note type (model) to pre-select when adding cards (overrides remembered value)"
+    },
+    {
+      "name": "default_tags",
+      "type": "textfield",
+      "required": false,
+      "title": "Default Tags",
+      "description": "Comma-separated tags applied automatically to new cards"
+    },
+    {
+      "name": "ai_enabled",
+      "type": "checkbox",
+      "label": "Enable AI Assist",
+      "required": false,
+      "default": false,
+      "description": "Show AI-powered actions for card generation and improvement"
+    },
+    {
+      "name": "ai_provider",
+      "type": "dropdown",
+      "title": "AI Provider",
+      "data": [
+        {
+          "title": "OpenAI",
+          "value": "openai"
+        },
+        {
+          "title": "Anthropic",
+          "value": "anthropic"
+        },
+        {
+          "title": "Google Gemini",
+          "value": "gemini"
+        }
+      ],
+      "default": "openai",
+      "required": false,
+      "description": "Which AI provider to use for card generation"
+    },
+    {
+      "name": "ai_api_key",
+      "type": "password",
+      "required": false,
+      "title": "AI API Key",
+      "description": "API key for the selected AI provider (stored securely)"
+    },
+    {
+      "name": "ai_model",
+      "type": "textfield",
+      "required": false,
+      "title": "AI Model",
+      "description": "Model name (e.g. gpt-4o-mini, claude-sonnet-4-20250514, gemini-2.0-flash). Leave blank for provider default."
+    },
+    {
+      "name": "ai_max_output_tokens",
+      "type": "textfield",
+      "required": false,
+      "title": "AI Max Output Tokens",
+      "default": "1024",
+      "description": "Maximum tokens in AI response"
+    },
+    {
+      "name": "ai_temperature",
+      "type": "textfield",
+      "required": false,
+      "title": "AI Temperature",
+      "default": "0.3",
+      "description": "Creativity level (0.0 = deterministic, 1.0 = creative)"
+    },
+    {
+      "name": "ai_note_type_mode",
+      "type": "dropdown",
+      "title": "AI Note Type Mode",
+      "data": [
+        {
+          "title": "Auto (AI chooses)",
+          "value": "auto"
+        },
+        {
+          "title": "Prefer Basic",
+          "value": "prefer_basic"
+        },
+        {
+          "title": "Prefer Cloze",
+          "value": "prefer_cloze"
+        },
+        {
+          "title": "Basic only",
+          "value": "basic_only"
+        },
+        {
+          "title": "Cloze only",
+          "value": "cloze_only"
+        }
+      ],
+      "default": "auto",
+      "required": false,
+      "description": "How AI chooses between Basic and Cloze note types"
+    },
+    {
+      "name": "ai_max_clozes_per_card",
+      "type": "textfield",
+      "required": false,
+      "title": "Max Clozes per Card",
+      "default": "2",
+      "description": "Maximum cloze deletions per card to keep cards atomic"
+    },
+    {
+      "name": "ai_dry_run",
+      "type": "checkbox",
+      "label": "AI Dry Run (preview only)",
+      "required": false,
+      "default": false,
+      "description": "Preview AI output without writing to form fields"
+    },
+    {
+      "name": "basic_model_name",
+      "type": "textfield",
+      "required": false,
+      "title": "Basic Model Name",
+      "default": "Basic",
+      "description": "Name of your Anki Basic note type"
+    },
+    {
+      "name": "cloze_model_name",
+      "type": "textfield",
+      "required": false,
+      "title": "Cloze Model Name",
+      "default": "Cloze",
+      "description": "Name of your Anki Cloze note type"
     }
   ],
   "license": "MIT",
@@ -78,6 +221,30 @@
           "label": "Allow empty card fields",
           "required": false,
           "description": "Enabling this will allow you to create cards with empty fields"
+        },
+        {
+          "name": "enable_attachments",
+          "type": "checkbox",
+          "label": "Enable file attachments on cards",
+          "required": false,
+          "default": false,
+          "description": "Show file picker fields for each card field"
+        },
+        {
+          "name": "show_field_hints",
+          "type": "checkbox",
+          "label": "Show field hints when template selected",
+          "required": false,
+          "default": true,
+          "description": "Display template-specific labels and placeholders on form fields"
+        },
+        {
+          "name": "show_draft_field",
+          "type": "checkbox",
+          "label": "Show Draft/Notes field",
+          "required": false,
+          "default": true,
+          "description": "Show a multiline draft field for quick note capture and AI input"
         }
       ]
     },
@@ -86,6 +253,13 @@
       "title": "View Stats",
       "subtitle": "Anki",
       "description": "View Anki collection statistics",
+      "mode": "view"
+    },
+    {
+      "name": "generateCards",
+      "title": "Generate Cards from Notes",
+      "subtitle": "Anki",
+      "description": "Use AI to generate multiple flashcards from pasted notes",
       "mode": "view"
     }
   ],
@@ -109,13 +283,16 @@
     "@types/react": "18.3.3",
     "eslint": "^8.57.0",
     "prettier": "^3.3.2",
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "vitest": "^4.0.18"
   },
   "scripts": {
     "build": "ray build -e dist",
     "dev": "ray develop",
     "fix-lint": "ray lint --fix",
     "lint": "ray lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "publish": "npx @raycast/api@latest publish"
   }
 }

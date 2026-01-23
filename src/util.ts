@@ -58,8 +58,11 @@ const SUPPORTED_FILE_TYPES = {
   video: ['.mp4', '.webm', '.mov', '.avi', '.mkv'],
 };
 
-// TODO: add a cleaner re-write of this
-export function transformSubmittedData(submittedData: CreateCardFormValues, modelFields: string[]) {
+export function transformSubmittedData(
+  submittedData: CreateCardFormValues,
+  modelFields: string[],
+  includeFiles = true
+) {
   const result: AddNoteParams = {
     deckName: submittedData.deckName,
     modelName: submittedData.modelName,
@@ -74,35 +77,37 @@ export function transformSubmittedData(submittedData: CreateCardFormValues, mode
     result.fields[fieldName] = submittedData[`field_${fieldName}`] || '';
   });
 
-  modelFields.forEach(fieldName => {
-    const files = submittedData[`file_${fieldName}`] || [];
-    files.forEach((file: string) => {
-      const fileExtension = file.split('.').pop()?.toLowerCase();
-      const fileName = file.split('/').pop();
+  if (includeFiles) {
+    modelFields.forEach(fieldName => {
+      const files = submittedData[`file_${fieldName}`] || [];
+      files.forEach((file: string) => {
+        const fileExtension = file.split('.').pop()?.toLowerCase();
+        const fileName = file.split('/').pop();
 
-      if (!fileExtension || !fileName) return;
+        if (!fileExtension || !fileName) return;
 
-      if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(fileExtension)) {
-        result.picture.push({
-          path: `/${file}`,
-          filename: fileName,
-          fields: [fieldName],
-        });
-      } else if (['mp3', 'wav', 'ogg'].includes(fileExtension)) {
-        result.audio.push({
-          path: `/${file}`,
-          filename: fileName,
-          fields: [fieldName],
-        });
-      } else if (['mp4', 'webm', 'ogv'].includes(fileExtension)) {
-        result.video.push({
-          path: `/${file}`,
-          filename: fileName,
-          fields: [fieldName],
-        });
-      }
+        if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(fileExtension)) {
+          result.picture.push({
+            path: `/${file}`,
+            filename: fileName,
+            fields: [fieldName],
+          });
+        } else if (['mp3', 'wav', 'ogg'].includes(fileExtension)) {
+          result.audio.push({
+            path: `/${file}`,
+            filename: fileName,
+            fields: [fieldName],
+          });
+        } else if (['mp4', 'webm', 'ogv'].includes(fileExtension)) {
+          result.video.push({
+            path: `/${file}`,
+            filename: fileName,
+            fields: [fieldName],
+          });
+        }
+      });
     });
-  });
+  }
 
   return result;
 }
@@ -146,4 +151,18 @@ export function parseMediaFiles(ankiFieldText: string): MediaFile[] {
 export function isValidFileType(filePath: string) {
   const extension = path.extname(filePath).toLowerCase();
   return Object.values(SUPPORTED_FILE_TYPES).some(types => types.includes(extension));
+}
+
+export function normalizeFormatting(text: string): string {
+  return text
+    .split('\n')
+    .map(line => {
+      let l = line.trimEnd();
+      l = l.replace(/^(\s*)[-]\s/, '$1• ');
+      l = l.replace(/\s{2,}/g, ' ');
+      return l;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
