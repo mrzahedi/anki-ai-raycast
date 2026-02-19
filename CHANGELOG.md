@@ -1,22 +1,36 @@
-# Anki Changelog
+# Changelog
 
-## [Security Maintenance] - {PR_MERGE_DATE}
+## [v2.0.0] - 2026-02-19
 
-- Removed unused `npm-check-updates` dependency.
-- Reduced transitive dependency surface (including removal of transitive `tar` usage) to address security advisories.
+Major rewrite adding AI-powered card generation and interview prep workflows.
 
-## [Bug Fixes] - 2024-12-06
+### Added
+- **AI card generation**: provider-agnostic layer supporting OpenAI, Anthropic, and Google Gemini
+- **Structured output parsing**: strict JSON schema with fallback extraction for robustness
+- **Basic/Cloze note type awareness**: AI picks the right note type based on content heuristics, with user override
+- **Field mapping engine**: validates AI output against live Anki model schemas via AnkiConnect
+- **5 card templates** for interview prep: DSA Concept, System Design Concept, LeetCode SR, System Design Case Study, Behavioral Story (STAR)
+- **Generate Cards from Notes** command: batch-generate from pasted notes with a review list before adding to Anki
+- **Draft/Notes field**: multiline input for raw note capture, feeds into AI actions
+- **QoL actions**: Swap Front/Back, Normalize Formatting, Copy/Paste clipboard, Add Card (keep template & tags)
+- **Remembered defaults**: last-used deck and model persisted via LocalStorage
+- **Default tags preference**: comma-separated tags auto-applied to every card
+- **File attachment toggle**: preference to show/hide file pickers (default: hidden)
+- **Field hints**: template-specific labels and placeholder text on form fields
+- **Dry run mode**: preview AI output without writing to form fields
+- **Unit and integration tests**: 73 tests covering parser, field mapper, prompts, templates, and utilities
 
-- Fixed turndown to support markdown syntax when rendering card content
+### Changed
+- Rewrote AddCardAction form with template selector, draft field, and AI action panel
+- `transformSubmittedData` now accepts `includeFiles` parameter to skip media processing
 
-## [Improvements] - 2024-10-07
+## [v1.0.0] - 2024-08-06 (upstream)
 
-- Made `model` and `deck` dropdowns remeber last selected item
-- Added preference to `AddCard` command to permit empty field values.
+Initial release by [anton-suprun](https://github.com/raycast/extensions/tree/main/extensions/anki).
 
-## [Improvements] - 2024-09-11
-
-- Added pagination to commands **Decks** and **BrowseCards** (should resolve out-memory-errors for larger card collections)
-- Clarified information in the troubleshooting steps
-
-## [Initial Version] - 2024-08-06
+- Deck listing with stats (new, learn, due)
+- Card browser with Anki search syntax
+- Add Card form with dynamic model fields
+- File attachment support (image, audio, video)
+- AnkiConnect integration with retry logic
+- Study deck with answer grading
