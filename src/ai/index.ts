@@ -4,12 +4,15 @@ import {
   AIConvertContext,
   AISettings,
   AIResponse,
+  AICard,
+  NoteType,
   getDefaultModel,
   Message,
 } from './types';
 import { buildSystemPrompt, buildUserPrompt } from './prompt';
 import { parseAIResponse } from './parser';
 import { mapAICardToAnkiFields } from './fieldMapper';
+import { buildScoringMessages, parseScoreResponse, CardScore } from './scoring';
 import { openaiProvider } from './providers/openai';
 import { anthropicProvider } from './providers/anthropic';
 import { geminiProvider } from './providers/gemini';
@@ -293,4 +296,139 @@ export async function generateCardsFromDraft(
   }
 
   return generateAndParse('generate', draftText, settings, template, undefined, count);
+}
+
+export async function handleAIScore(
+  ctx: Omit<AIActionContext, 'draftText'>
+): Promise<CardScore | null> {
+  let result: CardScore | null = null;
+
+  await withAIErrorHandling(async () => {
+    const settings = getAISettings();
+    const content = buildContentFromFields(ctx.fieldValues, ctx.values);
+
+    if (!content.trim()) {
+      showToast({
+        style: Toast.Style.Failure,
+        title: 'No content',
+        message: 'Fill in card fields first',
+      });
+      return;
+    }
+
+    const card: AICard = {
+      front: ctx.fieldValues['field_Front'] || (ctx.values['field_Front'] as string) || undefined,
+      back: ctx.fieldValues['field_Back'] || (ctx.values['field_Back'] as string) || undefined,
+      text: ctx.fieldValues['field_Text'] || (ctx.values['field_Text'] as string) || undefined,
+      extra: ctx.fieldValues['field_Extra'] || (ctx.values['field_Extra'] as string) || undefined,
+      tags: (ctx.values.tags as string[]) || [],
+    };
+
+    const messages = buildScoringMessages([card]);
+    const raw = await callAI(messages, settings);
+    const response = parseScoreResponse(raw);
+    result = response.scores[0] || null;
+
+    if (result) {
+      const emoji = result.score >= 8 ? '🟢' : result.score >= 5 ? '🟡' : '🔴';
+      showToast({
+        style: Toast.Style.Success,
+        title: `${emoji} Score: ${result.score}/10 — ${result.grade}`,
+        message: result.feedback.slice(0, 2).join(' | ').slice(0, 100),
+      });
+    }
+  });
+
+  return result;
+}
+
+export async function scoreCards(
+  cards: AICard[],
+  noteType?: NoteType
+): Promise<CardScore[]> {
+  const settings = getAISettings();
+  if (!settings.apiKey) throw new Error('AI API key not configured');
+
+  const messages = buildScoringMessages(cards, noteType);
+  const raw = await callAI(messages, settings);
+  const response = parseScoreResponse(raw);
+  return response.scores;
+}
+
+export async function handleAISuggestTags(
+  ctx: Omit<AIActionContext, 'draftText'>
+): Promise<void> {
+  await withAIErrorHandling(async () => {
+    const settings = getAISettings();
+    const content = buildContentFromFields(ctx.fieldValues, ctx.values);
+
+    if (!content.trim()) {
+      showToast({
+        style: Toast.Style.Failure,
+        title: 'No content',
+        message: 'Fill in card fields first',
+      });
+      return;
+    }
+
+    const messages: Message[] = [
+      {
+        role: 'system',
+        content:
+          'You are a flashcard organization expert. Given flashcard content, suggest 3-8 relevant tags for categorization and retrieval. Respond with ONLY a JSON array of lowercase tag strings, e.g. ["tag1", "tag2"]. Use hyphens for multi-word tags. Be specific and useful.',
+      },
+      {
+        role: 'user',
+        content: `Suggest tags for this flashcard:\n\n${content}`,
+      },
+    ];
+
+    const raw = await callAI(messages, settings);
+    const trimmed = raw.trim();
+    const match = trimmed.match(/\[[\s\S]*\]/);
+    if (!match) {
+      showToast({ style: Toast.Style.Failure, title: 'Could not parse tag suggestions' });
+      return;
+    }
+
+    const suggested: string[] = JSON.parse(match[0]).filter(
+      (t: unknown): t is string => typeof t === 'string' && t.trim().length > 0
+    );
+
+    const currentTags = (ctx.values.tags as string[]) || [];
+    const merged = [...new Set([...currentTags, ...suggested])];
+    ctx.setValue('tags', merged);
+
+    showToast({
+      style: Toast.Style.Success,
+      title: `Added ${suggested.length} tag suggestions`,
+      message: suggested.join(', ').slice(0, 80),
+    });
+  });
+}
+
+export async function detectTemplate(draftText: string): Promise<string | null> {
+  const settings = getAISettings();
+  if (!settings.apiKey) return null;
+
+  const messages: Message[] = [
+    {
+      role: 'system',
+      content:
+        'You classify flashcard content into template categories. Respond with ONLY one of these IDs: DSA_CONCEPT, SD_CONCEPT, LEETCODE_SR, SD_CASE, BEHAVIORAL, NONE. No explanation, just the ID.',
+    },
+    {
+      role: 'user',
+      content: `Classify this content:\n\n${draftText.slice(0, 500)}`,
+    },
+  ];
+
+  try {
+    const raw = await callAI(messages, settings);
+    const id = raw.trim().toUpperCase();
+    const valid = ['DSA_CONCEPT', 'SD_CONCEPT', 'LEETCODE_SR', 'SD_CASE', 'BEHAVIORAL'];
+    return valid.includes(id) ? id : null;
+  } catch {
+    return null;
+  }
 }
