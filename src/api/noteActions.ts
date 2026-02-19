@@ -26,9 +26,9 @@ export default {
     });
     return notesInfo;
   },
-  addNote: async (params: AddNoteParams): Promise<void> => {
+  addNote: async (params: AddNoteParams): Promise<number> => {
     const { allow_dup_cards, dup_scope } = getPreferenceValues<Preferences>();
-    await ankiReq('addNote', {
+    const noteId = await ankiReq<number>('addNote', {
       note: {
         ...params,
         options: {
@@ -37,6 +37,7 @@ export default {
         },
       },
     });
+    return noteId;
   },
   deleteNote: async (cardID: number): Promise<void> => {
     const noteIds = await ankiReq('cardsToNotes', { cards: [cardID] });
