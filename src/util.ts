@@ -153,6 +153,63 @@ export function isValidFileType(filePath: string) {
   return Object.values(SUPPORTED_FILE_TYPES).some(types => types.includes(extension));
 }
 
+export interface ParsedClipboard {
+  front?: string;
+  back?: string;
+  extra?: string;
+  raw: string;
+}
+
+export function parseClipboardContent(text: string): ParsedClipboard {
+  const trimmed = text.trim();
+  if (!trimmed) return { raw: trimmed };
+
+  const qaPattern = /^(?:Q|Question)\s*:\s*([\s\S]*?)(?:\n\s*)?(?:A|Answer)\s*:\s*([\s\S]*)$/i;
+  const qaMatch = trimmed.match(qaPattern);
+  if (qaMatch) {
+    return {
+      front: qaMatch[1].trim(),
+      back: qaMatch[2].trim(),
+      raw: trimmed,
+    };
+  }
+
+  const termDefPattern = /^([^:\n]{3,80}):\s+(.+)$/s;
+  const lines = trimmed.split('\n');
+  if (lines.length <= 3) {
+    const termMatch = trimmed.match(termDefPattern);
+    if (termMatch) {
+      return {
+        front: termMatch[1].trim(),
+        back: termMatch[2].trim(),
+        raw: trimmed,
+      };
+    }
+  }
+
+  const blankLineIdx = trimmed.indexOf('\n\n');
+  if (blankLineIdx !== -1) {
+    const firstBlock = trimmed.slice(0, blankLineIdx).trim();
+    const rest = trimmed.slice(blankLineIdx + 2).trim();
+    const secondBlankIdx = rest.indexOf('\n\n');
+    if (secondBlankIdx !== -1) {
+      return {
+        front: firstBlock,
+        back: rest.slice(0, secondBlankIdx).trim(),
+        extra: rest.slice(secondBlankIdx + 2).trim(),
+        raw: trimmed,
+      };
+    }
+    return {
+      front: firstBlock,
+      back: rest,
+      raw: trimmed,
+    };
+  }
+
+  return { raw: trimmed };
+}
+
 export function normalizeFormatting(text: string): string {
   return text
     .split('\n')
