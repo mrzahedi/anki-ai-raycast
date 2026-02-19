@@ -36,6 +36,7 @@ export interface AICard {
   tags: string[];
   modelName?: string;
   deckName?: string;
+  noteType?: NoteType;
 }
 
 export interface AIResponse {

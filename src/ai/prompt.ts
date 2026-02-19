@@ -4,16 +4,34 @@ import { CardTemplate } from '../templates';
 function noteTypeModeInstruction(mode: NoteTypeMode): string {
   switch (mode) {
     case 'auto':
-      return `Choose the best note type (Basic or Cloze) for the content. Explain your choice briefly in "notes".
-- Choose CLOZE when: the content is a statement/list/process where hiding 1-2 key terms improves recall, and the card can remain clear and atomic.
-- Choose BASIC when: the content is a direct Q&A, tradeoff discussion, decision prompt, or "signals → pattern" mapping. Also prefer Basic when Cloze would be awkward, ambiguous, or too dense.
-- LeetCode SR cards: default to BASIC unless user explicitly says Cloze.
-- Behavioral cards: default to BASIC.
-- System design concepts: Cloze for crisp definitions, Basic for tradeoffs/decisions.`;
+      return `Choose the best note type (Basic or Cloze) PER CARD. In bulk generation, you MAY mix Basic and Cloze cards. Set "noteType" on each card.
+
+### When to choose CLOZE
+- Crisp definitions with 1-2 key terms to hide: "{{c1::Consistent hashing}} distributes keys across a ring of virtual nodes"
+- Factual statements where hiding a specific term tests recall: "The time complexity of binary search is {{c1::O(log n)}}"
+- Step-by-step processes with key terms: "In TCP, the {{c1::three-way handshake}} establishes a connection using {{c2::SYN/ACK}} packets"
+- Short lists where each item is independently memorable: "The CAP theorem states you can only guarantee 2 of: {{c1::Consistency}}, {{c2::Availability}}, {{c3::Partition tolerance}}"
+
+### When to choose BASIC
+- Q&A format where the question requires a multi-part answer: "What are the tradeoffs of consistent hashing?" → bullets
+- Tradeoff comparisons: "Redis vs Memcached" → comparison answer
+- Decision/judgment prompts: "When would you use a B-tree over a hash index?"
+- Pattern recognition (LeetCode): "Two Sum — find pair" → "Pattern: Hash Map + approach"
+- Behavioral stories (STAR format): always Basic
+- When Cloze deletions would be awkward, ambiguous, or hide too much context
+- When the answer requires explanation, not just a term
+
+### Template-specific defaults
+- LeetCode SR: default to BASIC (pattern recognition is Q&A)
+- Behavioral: always BASIC (STAR stories don't work as cloze)
+- System Design Concept: Cloze for crisp definitions, Basic for tradeoffs/decisions/comparisons
+- DSA Concept: Cloze for definitions ("{{c1::A trie}} is a tree for prefix lookups"), Basic for "when to use" or pitfall discussions
+
+Explain your note type choice briefly in "notes".`;
     case 'prefer_basic':
-      return 'Prefer Basic note type unless Cloze is clearly better for recall.';
+      return 'Prefer Basic note type unless Cloze is clearly better for recall. You may still use Cloze for crisp definitions. Set "noteType" on each card.';
     case 'prefer_cloze':
-      return 'Prefer Cloze note type unless Basic is clearly better for the content.';
+      return 'Prefer Cloze note type unless Basic is clearly better for the content. You may still use Basic for Q&A/tradeoff cards. Set "noteType" on each card.';
     case 'basic_only':
       return 'Only produce Basic note type cards. Never use Cloze.';
     case 'cloze_only':
@@ -89,6 +107,7 @@ Respond with ONLY valid JSON matching this schema (no prose outside JSON):
       "text": "...",
       "extra": "...",
       "tags": ["..."],
+      "noteType": "BASIC|CLOZE",
       "modelName": "...",
       "deckName": "..."
     }
@@ -96,8 +115,10 @@ Respond with ONLY valid JSON matching this schema (no prose outside JSON):
   "notes": "brief explanation of choices, warnings, uncertainty flags"
 }
 
-For Basic cards: populate "front" and "back" (and optionally "extra"). Leave "text" empty or omit.
-For Cloze cards: populate "text" (with cloze syntax) and optionally "extra". Leave "front"/"back" empty or omit.
+- "selectedNoteType" is the dominant type. Each card can override it via "noteType".
+- For Basic cards: populate "front" and "back" (and optionally "extra"). Leave "text" empty or omit.
+- For Cloze cards: populate "text" (with cloze syntax) and optionally "extra". Leave "front"/"back" empty or omit.
+- When mixing types in bulk generation, set "noteType" on each card and populate the correct fields for that type.
 
 ## Guardrails
 - Never invent facts. If uncertain, mark notes with "NEEDS_REVIEW".

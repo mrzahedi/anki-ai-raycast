@@ -41,6 +41,9 @@ function validateCard(card: unknown, index: number): AICard {
     tags: Array.isArray(c.tags) ? c.tags.filter((t): t is string => typeof t === 'string') : [],
     modelName: typeof c.modelName === 'string' ? c.modelName : undefined,
     deckName: typeof c.deckName === 'string' ? c.deckName : undefined,
+    noteType: VALID_NOTE_TYPES.includes(c.noteType as NoteType)
+      ? (c.noteType as NoteType)
+      : undefined,
   };
 }
 
