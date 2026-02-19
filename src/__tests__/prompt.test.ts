@@ -33,8 +33,10 @@ describe('buildSystemPrompt', () => {
   it('includes auto mode instructions in auto mode', () => {
     const prompt = buildSystemPrompt({ ...baseSettings, noteTypeMode: 'auto' });
     expect(prompt).toContain('Choose the best note type');
-    expect(prompt).toContain('CLOZE when');
-    expect(prompt).toContain('BASIC when');
+    expect(prompt).toContain('When to choose CLOZE');
+    expect(prompt).toContain('When to choose BASIC');
+    expect(prompt).toContain('PER CARD');
+    expect(prompt).toContain('noteType');
   });
 
   it('includes basic_only instruction', () => {

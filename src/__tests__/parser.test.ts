@@ -104,4 +104,68 @@ describe('parseAIResponse', () => {
     expect(result.cards).toHaveLength(3);
     expect(result.cards[2].front).toBe('Q3');
   });
+
+  it('parses per-card noteType field', () => {
+    const mixed = JSON.stringify({
+      selectedNoteType: 'BASIC',
+      cards: [
+        { front: 'Q1', back: 'A1', tags: [], noteType: 'BASIC' },
+        { text: '{{c1::TCP}}', tags: [], noteType: 'CLOZE' },
+      ],
+    });
+    const result = parseAIResponse(mixed);
+    expect(result.cards[0].noteType).toBe('BASIC');
+    expect(result.cards[1].noteType).toBe('CLOZE');
+  });
+
+  it('sets noteType to undefined for invalid per-card noteType', () => {
+    const bad = JSON.stringify({
+      selectedNoteType: 'BASIC',
+      cards: [{ front: 'Q', back: 'A', tags: [], noteType: 'INVALID' }],
+    });
+    const result = parseAIResponse(bad);
+    expect(result.cards[0].noteType).toBeUndefined();
+  });
+
+  it('handles deeply nested JSON in fenced blocks', () => {
+    const nested = JSON.stringify({
+      selectedNoteType: 'BASIC',
+      cards: [
+        {
+          front: 'Nested: {"key": "value"}',
+          back: 'Answer with [brackets] and {braces}',
+          tags: ['nested'],
+        },
+      ],
+    });
+    const wrapped = '```json\n' + nested + '\n```';
+    const result = parseAIResponse(wrapped);
+    expect(result.cards[0].front).toContain('Nested');
+  });
+
+  it('handles card with deckName and modelName', () => {
+    const raw = JSON.stringify({
+      selectedNoteType: 'BASIC',
+      cards: [
+        {
+          front: 'Q',
+          back: 'A',
+          tags: [],
+          deckName: 'MyDeck',
+          modelName: 'Custom',
+        },
+      ],
+    });
+    const result = parseAIResponse(raw);
+    expect(result.cards[0].deckName).toBe('MyDeck');
+    expect(result.cards[0].modelName).toBe('Custom');
+  });
+
+  it('throws when a card is not an object', () => {
+    const bad = JSON.stringify({
+      selectedNoteType: 'BASIC',
+      cards: ['not an object'],
+    });
+    expect(() => parseAIResponse(bad)).toThrow('not an object');
+  });
 });

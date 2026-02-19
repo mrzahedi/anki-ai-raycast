@@ -125,4 +125,41 @@ describe('mapAICardToAnkiFields', () => {
     const result = mapAICardToAnkiFields(card, 'BASIC', [clozeModel], 'Basic', 'Cloze');
     expect(result).toHaveProperty('error');
   });
+
+  it('maps card using per-card noteType override', () => {
+    const card = { text: '{{c1::Hashing}} distributes keys', tags: [], noteType: 'CLOZE' as const };
+    const result = mapAICardToAnkiFields(card, 'CLOZE', allModels, 'Basic', 'Cloze');
+    expect(result).not.toHaveProperty('error');
+    if (!('error' in result)) {
+      expect(result.modelName).toBe('Cloze');
+      expect(result.fields.Text).toContain('{{c1::Hashing}}');
+    }
+  });
+
+  it('fills all model fields with empty strings for unmapped fields', () => {
+    const card = { front: 'Q', back: 'A', tags: [] };
+    const result = mapAICardToAnkiFields(card, 'BASIC', allModels, 'Basic', 'Cloze');
+    if (!('error' in result)) {
+      expect(result.fields.Extra).toBe('');
+      expect(Object.keys(result.fields)).toEqual(['Front', 'Back', 'Extra']);
+    }
+  });
+
+  it('uses card.front as fallback text for cloze when text is missing', () => {
+    const card = { front: 'Some text without cloze', tags: [] };
+    const result = mapAICardToAnkiFields(card, 'CLOZE', allModels, 'Basic', 'Cloze');
+    if (!('error' in result)) {
+      expect(result.fields.Text).toBe('Some text without cloze');
+    }
+  });
+
+  it('handles cloze model without Extra field', () => {
+    const clozeNoExtra = makeModel('Cloze', ['Text'], 1);
+    const card = { text: '{{c1::Test}}', extra: 'This will be ignored', tags: [] };
+    const result = mapAICardToAnkiFields(card, 'CLOZE', [clozeNoExtra, basicModel], 'Basic', 'Cloze');
+    if (!('error' in result)) {
+      expect(result.fields.Text).toContain('{{c1::Test}}');
+      expect(result.fields).not.toHaveProperty('Extra');
+    }
+  });
 });
