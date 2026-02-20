@@ -571,6 +571,10 @@ export default function AddCardAction({ deckName }: Props) {
                         });
                         const { generateCardsFromDraft } = await import('../ai');
                         const response = await generateCardsFromDraft(draftText, n);
+                        await showToast({
+                          style: Toast.Style.Success,
+                          title: `Generated ${response.cards.length} cards`,
+                        });
                         push(
                           <ReviewCardsList
                             response={response}

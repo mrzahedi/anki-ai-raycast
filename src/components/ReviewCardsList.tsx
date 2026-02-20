@@ -3,6 +3,8 @@ import {
   ActionPanel,
   Color,
   Detail,
+  Form,
+  Icon,
   List,
   getPreferenceValues,
   showToast,
@@ -10,7 +12,7 @@ import {
   useNavigation,
 } from '@raycast/api';
 import { useCachedPromise } from '@raycast/utils';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { scoreCards } from '../ai';
 import { AICard, AIResponse } from '../ai/types';
 import { CardScore } from '../ai/scoring';
@@ -22,9 +24,7 @@ import useErrorHandling from '../hooks/useErrorHandling';
 
 interface ReviewCardsListProps {
   response: AIResponse;
-  /** Pre-selected deck from the Add Card form */
   preSelectedDeck?: string;
-  /** Pre-selected tags from the Add Card form */
   preSelectedTags?: string[];
 }
 
@@ -33,7 +33,7 @@ export function ReviewCardsList({
   preSelectedDeck,
   preSelectedTags,
 }: ReviewCardsListProps) {
-  const { push } = useNavigation();
+  const { push, pop } = useNavigation();
   const { handleError } = useErrorHandling();
   const { data: models, isLoading: modelsLoading } = useCachedPromise(modelActions.getModels);
   const { data: decks, isLoading: decksLoading } = useCachedPromise(deckActions.getDecks);
@@ -42,9 +42,54 @@ export function ReviewCardsList({
   const basicName = basic_model_name || 'Basic';
   const clozeName = cloze_model_name || 'Cloze';
 
+  const [cards, setCards] = useState<AICard[]>(response.cards);
   const [addedIndices, setAddedIndices] = useState<Set<number>>(new Set());
   const [scores, setScores] = useState<Record<number, CardScore>>({});
   const [isScoring, setIsScoring] = useState(false);
+  const [cardDecks, setCardDecks] = useState<Record<number, string>>({});
+  const autoScored = useRef(false);
+
+  const getDeckForCard = (card: AICard, index: number): string => {
+    return cardDecks[index] || preSelectedDeck || card.deckName || decks?.[0]?.name || 'Default';
+  };
+
+  const handleScoreAll = async () => {
+    setIsScoring(true);
+    try {
+      await showToast({ style: Toast.Style.Animated, title: 'Scoring cards...' });
+      const results = await scoreCards(cards, response.selectedNoteType);
+      const scoreMap: Record<number, CardScore> = {};
+      results.forEach((s, i) => {
+        scoreMap[i] = s;
+      });
+      setScores(scoreMap);
+      showToast({ style: Toast.Style.Success, title: 'Scoring complete' });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      showToast({
+        style: Toast.Style.Failure,
+        title: 'Scoring failed',
+        message: msg.slice(0, 120),
+      });
+    } finally {
+      setIsScoring(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!modelsLoading && !decksLoading && !autoScored.current && cards.length > 0) {
+      autoScored.current = true;
+      handleScoreAll();
+    }
+  }, [modelsLoading, decksLoading]);
+
+  const updateCard = (index: number, updated: AICard) => {
+    setCards(prev => prev.map((c, i) => (i === index ? updated : c)));
+  };
+
+  const updateCardDeck = (index: number, deckName: string) => {
+    setCardDecks(prev => ({ ...prev, [index]: deckName }));
+  };
 
   const addCardToAnki = async (
     card: AICard,
@@ -63,7 +108,7 @@ export function ReviewCardsList({
       return null;
     }
 
-    const deckName = preSelectedDeck || card.deckName || decks?.[0]?.name || 'Default';
+    const deckName = getDeckForCard(card, index);
     const tags = [...new Set([...(preSelectedTags || []), ...(card.tags || [])])];
 
     try {
@@ -91,9 +136,9 @@ export function ReviewCardsList({
     const failures: string[] = [];
     const deckNameSet = new Set<string>();
 
-    for (let i = 0; i < response.cards.length; i++) {
+    for (let i = 0; i < cards.length; i++) {
       if (addedIndices.has(i)) continue;
-      const result = await addCardToAnki(response.cards[i], i);
+      const result = await addCardToAnki(cards[i], i);
       if (result) {
         added++;
         deckNameSet.add(result.deckName);
@@ -110,37 +155,14 @@ export function ReviewCardsList({
         totalFailed={failures.length}
         failures={failures}
         deckNames={[...deckNameSet]}
-        cards={response.cards.filter((_, i) => !addedIndices.has(i))}
+        cards={cards.filter((_, i) => !addedIndices.has(i))}
       />
     );
   };
 
-  const handleScoreAll = async () => {
-    setIsScoring(true);
-    try {
-      await showToast({ style: Toast.Style.Animated, title: 'Scoring cards...' });
-      const results = await scoreCards(response.cards, response.selectedNoteType);
-      const scoreMap: Record<number, CardScore> = {};
-      results.forEach((s, i) => {
-        scoreMap[i] = s;
-      });
-      setScores(scoreMap);
-      showToast({ style: Toast.Style.Success, title: 'Scoring complete' });
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      showToast({
-        style: Toast.Style.Failure,
-        title: 'Scoring failed',
-        message: msg.slice(0, 120),
-      });
-    } finally {
-      setIsScoring(false);
-    }
-  };
-
   return (
     <List
-      navigationTitle={`Generated ${response.cards.length} Cards`}
+      navigationTitle={`Generated ${cards.length} Cards`}
       isLoading={modelsLoading || decksLoading || isScoring}
       isShowingDetail
     >
@@ -148,40 +170,104 @@ export function ReviewCardsList({
         title={`${response.selectedNoteType} Cards`}
         subtitle={response.notes ? response.notes.slice(0, 80) : undefined}
       >
-        {response.cards.map((card, index) => {
+        {cards.map((card, index) => {
           const isAdded = addedIndices.has(index);
-          const preview = card.front || card.text || '(empty)';
-          const title = `${isAdded ? '✓ ' : ''}Card ${index + 1}`;
+          const preview = card.front || card.text || '';
+          const title = preview
+            ? `${isAdded ? '✓ ' : ''}${preview.slice(0, 60)}`
+            : `${isAdded ? '✓ ' : ''}Card ${index + 1}`;
           const cardNoteType = card.noteType || response.selectedNoteType;
           const cardScore = scores[index];
+          const deckName = getDeckForCard(card, index);
 
-          const accessories: List.Item.Accessory[] = [
-            { tag: cardNoteType },
-            ...(card.tags || []).slice(0, 2).map(t => ({ tag: t })),
-          ];
+          const accessories: List.Item.Accessory[] = [];
 
           if (cardScore) {
             const scoreColor =
               cardScore.score >= 8 ? Color.Green : cardScore.score >= 5 ? Color.Orange : Color.Red;
-            accessories.unshift({ tag: { value: `${cardScore.score}/10`, color: scoreColor } });
+            accessories.push({ tag: { value: `${cardScore.score}/10`, color: scoreColor } });
+          }
+
+          accessories.push({ tag: { value: cardNoteType, color: Color.Blue } });
+
+          if (card.tags && card.tags.length > 0) {
+            accessories.push(
+              ...card.tags.slice(0, 2).map(t => ({ tag: t }))
+            );
           }
 
           return (
             <List.Item
               key={index}
               title={title}
-              subtitle={preview.slice(0, 60)}
+              subtitle={`#${index + 1} · ${deckName}`}
+              keywords={[
+                card.front || '',
+                card.back || '',
+                card.text || '',
+                ...(card.tags || []),
+              ].filter(Boolean)}
               accessories={accessories}
               detail={
-                <List.Item.Detail markdown={formatCardMarkdown(card, cardNoteType, cardScore)} />
+                <List.Item.Detail
+                  markdown={formatCardMarkdown(card, cardNoteType, deckName, cardScore)}
+                />
               }
               actions={
                 <ActionPanel>
+                  <Action
+                    title="Edit Card"
+                    icon={Icon.Pencil}
+                    onAction={() =>
+                      push(
+                        <EditCardForm
+                          card={card}
+                          index={index}
+                          noteType={cardNoteType}
+                          deckName={deckName}
+                          decks={decks || []}
+                          onSave={(updated, newDeck) => {
+                            updateCard(index, updated);
+                            updateCardDeck(index, newDeck);
+                            pop();
+                          }}
+                        />
+                      )
+                    }
+                  />
                   {!isAdded && (
-                    <Action title="Add to Anki" onAction={() => addCardToAnki(card, index)} />
+                    <Action
+                      title="Add to Anki"
+                      icon={Icon.Plus}
+                      onAction={() => addCardToAnki(card, index)}
+                    />
                   )}
-                  <Action title="Add All to Anki" onAction={addAllToAnki} />
-                  <Action title="Score All Cards" onAction={handleScoreAll} />
+                  <Action
+                    title="Add All to Anki"
+                    icon={Icon.PlusCircle}
+                    onAction={addAllToAnki}
+                  />
+                  <Action
+                    title="Change Deck"
+                    icon={Icon.Tray}
+                    onAction={() =>
+                      push(
+                        <DeckPicker
+                          decks={decks || []}
+                          currentDeck={deckName}
+                          onSelect={(selected) => {
+                            updateCardDeck(index, selected);
+                            pop();
+                          }}
+                        />
+                      )
+                    }
+                  />
+                  <Action
+                    title="Score All Cards"
+                    icon={Icon.Stars}
+                    onAction={handleScoreAll}
+                  />
                 </ActionPanel>
               }
             />
@@ -191,6 +277,107 @@ export function ReviewCardsList({
     </List>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  Edit Card Form                                                     */
+/* ------------------------------------------------------------------ */
+
+interface EditCardFormProps {
+  card: AICard;
+  index: number;
+  noteType: string;
+  deckName: string;
+  decks: { deck_id: number; name: string }[];
+  onSave: (card: AICard, deckName: string) => void;
+}
+
+function EditCardForm({ card, index, noteType, deckName, decks, onSave }: EditCardFormProps) {
+  return (
+    <Form
+      navigationTitle={`Edit Card ${index + 1}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Save Changes"
+            onSubmit={(values: {
+              front?: string;
+              back?: string;
+              text?: string;
+              extra?: string;
+              tags: string[];
+              deckName: string;
+            }) => {
+              const updated: AICard = {
+                ...card,
+                front: values.front,
+                back: values.back,
+                text: values.text,
+                extra: values.extra,
+                tags: values.tags,
+              };
+              onSave(updated, values.deckName);
+            }}
+          />
+        </ActionPanel>
+      }
+    >
+      {noteType === 'BASIC' ? (
+        <>
+          <Form.TextArea id="front" title="Front" defaultValue={card.front || ''} />
+          <Form.TextArea id="back" title="Back" defaultValue={card.back || ''} />
+        </>
+      ) : (
+        <Form.TextArea id="text" title="Text (Cloze)" defaultValue={card.text || ''} />
+      )}
+      <Form.TextArea id="extra" title="Extra" defaultValue={card.extra || ''} />
+      <Form.TagPicker id="tags" title="Tags" defaultValue={card.tags || []}>
+        {(card.tags || []).map(tag => (
+          <Form.TagPicker.Item key={tag} value={tag} title={tag} />
+        ))}
+      </Form.TagPicker>
+      <Form.Dropdown id="deckName" title="Deck" defaultValue={deckName}>
+        {decks.map(d => (
+          <Form.Dropdown.Item key={d.deck_id} title={d.name} value={d.name} />
+        ))}
+      </Form.Dropdown>
+    </Form>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Deck Picker                                                        */
+/* ------------------------------------------------------------------ */
+
+function DeckPicker({
+  decks,
+  currentDeck,
+  onSelect,
+}: {
+  decks: { deck_id: number; name: string }[];
+  currentDeck: string;
+  onSelect: (deckName: string) => void;
+}) {
+  return (
+    <List navigationTitle="Select Deck">
+      {decks.map(deck => (
+        <List.Item
+          key={deck.deck_id}
+          title={deck.name}
+          icon={deck.name === currentDeck ? Icon.Checkmark : Icon.Tray}
+          actions={
+            <ActionPanel>
+              <Action title="Select Deck" onAction={() => onSelect(deck.name)} />
+            </ActionPanel>
+          }
+        />
+      ))}
+    </List>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Bulk Add Summary                                                   */
+/* ------------------------------------------------------------------ */
 
 function BulkAddSummary({
   totalAdded,
@@ -228,8 +415,19 @@ function BulkAddSummary({
   return <Detail navigationTitle="Bulk Add Summary" markdown={parts.join('\n')} />;
 }
 
-function formatCardMarkdown(card: AICard, noteType: string, score?: CardScore): string {
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function formatCardMarkdown(
+  card: AICard,
+  noteType: string,
+  deckName: string,
+  score?: CardScore
+): string {
   const parts: string[] = [];
+
+  parts.push(`**Deck:** ${deckName}`);
 
   if (noteType === 'BASIC') {
     if (card.front) parts.push(`## Front\n${card.front}`);
