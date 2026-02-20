@@ -65,8 +65,6 @@ declare namespace Preferences {
 }
   /** Preferences accessible in the `viewStats` command */
   export type ViewStats = ExtensionPreferences & {}
-  /** Preferences accessible in the `generateCards` command */
-  export type GenerateCards = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
@@ -78,7 +76,5 @@ declare namespace Arguments {
   export type AddCard = {}
   /** Arguments passed to the `viewStats` command */
   export type ViewStats = {}
-  /** Arguments passed to the `generateCards` command */
-  export type GenerateCards = {}
 }
 
