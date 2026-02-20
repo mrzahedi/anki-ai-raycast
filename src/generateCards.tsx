@@ -6,14 +6,12 @@ import {
   Form,
   getPreferenceValues,
   List,
-  showHUD,
   showToast,
   Toast,
   useNavigation,
 } from '@raycast/api';
 import { useCachedPromise } from '@raycast/utils';
 import { useState } from 'react';
-import { TEMPLATES, getTemplateById } from './templates';
 import { generateCardsFromDraft, scoreCards } from './ai';
 import { AICard, AIResponse } from './ai/types';
 import { CardScore } from './ai/scoring';
@@ -38,7 +36,6 @@ export default function GenerateCardsCommand() {
 function GenerateCardsForm() {
   const { push } = useNavigation();
   const [isGenerating, setIsGenerating] = useState(false);
-  const [templateId, setTemplateId] = useState('none');
   const [draftText, setDraftText] = useState('');
   const [count, setCount] = useState('5');
 
@@ -50,7 +47,7 @@ function GenerateCardsForm() {
             title="Generate Cards"
             onSubmit={async () => {
               if (!draftText.trim()) {
-                showToast({ style: Toast.Style.Failure, title: 'Enter draft notes first' });
+                showToast({ style: Toast.Style.Failure, title: 'Enter notes first' });
                 return;
               }
 
@@ -63,8 +60,7 @@ function GenerateCardsForm() {
               setIsGenerating(true);
               try {
                 await showToast({ style: Toast.Style.Animated, title: 'Generating cards...' });
-                const template = templateId !== 'none' ? getTemplateById(templateId) : undefined;
-                const response = await generateCardsFromDraft(draftText, n, template);
+                const response = await generateCardsFromDraft(draftText, n);
                 push(<ReviewCardsList response={response} />);
               } catch (error) {
                 const msg = error instanceof Error ? error.message : String(error);
@@ -83,16 +79,9 @@ function GenerateCardsForm() {
       navigationTitle="Generate Cards from Notes"
       isLoading={isGenerating}
     >
-      <Form.Dropdown id="template" title="Template" value={templateId} onChange={setTemplateId}>
-        <Form.Dropdown.Item key="none" title="Auto-detect" value="none" />
-        {TEMPLATES.map(t => (
-          <Form.Dropdown.Item key={t.id} title={t.name} value={t.id} />
-        ))}
-      </Form.Dropdown>
-
       <Form.TextArea
         id="draft"
-        title="Draft / Notes"
+        title="Source Notes"
         placeholder="Paste your raw notes, lecture content, or study material here..."
         value={draftText}
         onChange={setDraftText}
@@ -181,7 +170,7 @@ function ReviewCardsList({ response }: { response: AIResponse }) {
       }
     }
 
-    await showHUD(`Added ${added} cards to Anki`);
+    showToast({ style: Toast.Style.Success, title: `Added ${added} cards to Anki` });
 
     push(
       <BulkAddSummary
