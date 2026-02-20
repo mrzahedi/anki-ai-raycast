@@ -10,11 +10,18 @@ export const geminiProvider: AIProviderAdapter = {
       parts: [{ text: m.content }],
     }));
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${settings.model}:generateContent?key=${settings.apiKey}`;
+    const url = settings.baseUrl
+      ? `${settings.baseUrl.replace(/\/+$/, '')}/models/${settings.model}:generateContent`
+      : `https://generativelanguage.googleapis.com/v1beta/models/${settings.model}:generateContent?key=${settings.apiKey}`;
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (settings.baseUrl) {
+      headers['Authorization'] = `Bearer ${settings.apiKey}`;
+    }
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         contents,
         systemInstruction: systemMsg ? { parts: [{ text: systemMsg.content }] } : undefined,

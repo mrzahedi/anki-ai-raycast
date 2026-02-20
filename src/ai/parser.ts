@@ -1,12 +1,5 @@
-import { AIResponse, AICard, NoteType, TemplateId } from './types';
+import { AIResponse, AICard, NoteType } from './types';
 
-const VALID_TEMPLATES: TemplateId[] = [
-  'DSA_CONCEPT',
-  'SD_CONCEPT',
-  'LEETCODE_SR',
-  'SD_CASE',
-  'BEHAVIORAL',
-];
 const VALID_NOTE_TYPES: NoteType[] = ['BASIC', 'CLOZE'];
 
 function extractJSON(raw: string): string {
@@ -38,6 +31,8 @@ function validateCard(card: unknown, index: number): AICard {
     back: typeof c.back === 'string' ? c.back : undefined,
     text: typeof c.text === 'string' ? c.text : undefined,
     extra: typeof c.extra === 'string' ? c.extra : undefined,
+    code: typeof c.code === 'string' ? c.code : undefined,
+    timestamp: typeof c.timestamp === 'string' ? c.timestamp : undefined,
     tags: Array.isArray(c.tags) ? c.tags.filter((t): t is string => typeof t === 'string') : [],
     modelName: typeof c.modelName === 'string' ? c.modelName : undefined,
     deckName: typeof c.deckName === 'string' ? c.deckName : undefined,
@@ -61,10 +56,6 @@ export function parseAIResponse(raw: string): AIResponse {
     ? (obj.selectedNoteType as NoteType)
     : 'BASIC';
 
-  const selectedTemplate = VALID_TEMPLATES.includes(obj.selectedTemplate as TemplateId)
-    ? (obj.selectedTemplate as TemplateId)
-    : undefined;
-
   if (!Array.isArray(obj.cards) || obj.cards.length === 0) {
     throw new Error('AI response contains no cards');
   }
@@ -72,7 +63,6 @@ export function parseAIResponse(raw: string): AIResponse {
   const cards = obj.cards.map((c: unknown, i: number) => validateCard(c, i));
 
   return {
-    selectedTemplate,
     selectedNoteType,
     cards,
     notes: typeof obj.notes === 'string' ? obj.notes : '',

@@ -2,12 +2,16 @@ import { AIProviderAdapter, AISettings, Message } from '../types';
 
 export const anthropicProvider: AIProviderAdapter = {
   async generate(messages: Message[], settings: AISettings): Promise<string> {
+    const url = settings.baseUrl
+      ? `${settings.baseUrl.replace(/\/+$/, '')}/messages`
+      : 'https://api.anthropic.com/v1/messages';
+
     const systemMsg = messages.find(m => m.role === 'system');
     const userMessages = messages
       .filter(m => m.role !== 'system')
       .map(m => ({ role: m.role, content: m.content }));
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

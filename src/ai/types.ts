@@ -1,14 +1,14 @@
 import { Model } from '../types';
-import { CardTemplate } from '../templates';
 
 export type AIProvider = 'openai' | 'anthropic' | 'gemini';
 export type NoteTypeMode = 'auto' | 'prefer_basic' | 'prefer_cloze' | 'basic_only' | 'cloze_only';
 export type NoteType = 'BASIC' | 'CLOZE';
-export type TemplateId = 'DSA_CONCEPT' | 'SD_CONCEPT' | 'LEETCODE_SR' | 'SD_CASE' | 'BEHAVIORAL';
+export type AITask = 'heavy' | 'light';
 
 export interface AISettings {
   provider: AIProvider;
   apiKey: string;
+  baseUrl?: string;
   model: string;
   maxOutputTokens: number;
   temperature: number;
@@ -33,6 +33,8 @@ export interface AICard {
   back?: string;
   text?: string;
   extra?: string;
+  code?: string;
+  timestamp?: string;
   tags: string[];
   modelName?: string;
   deckName?: string;
@@ -40,7 +42,6 @@ export interface AICard {
 }
 
 export interface AIResponse {
-  selectedTemplate?: TemplateId;
   selectedNoteType: NoteType;
   cards: AICard[];
   notes: string;
@@ -55,7 +56,7 @@ export interface AIActionContext {
   values: Record<string, unknown>;
   setValue: FormValueSetter;
   models: Model[];
-  selectedTemplate?: CardTemplate;
+  availableTags?: string[];
 }
 
 export interface AIConvertContext extends AIActionContext {

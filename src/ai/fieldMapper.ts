@@ -37,7 +37,6 @@ function mapClozeCard(
     return { ...fallback, fields: { ...fallback.fields } };
   }
 
-  // Cloze models have type === 1
   if (clozeModel.type !== 1) {
     return {
       error: `Model "${clozeModelName}" is not a Cloze-type model (type=${clozeModel.type})`,
@@ -61,6 +60,13 @@ function mapClozeCard(
   );
   if (extraField && card.extra) {
     fields[extraField] = card.extra;
+  }
+
+  const timestampField = fieldNames.find(
+    f => f.toLowerCase() === 'timestamp' || f.toLowerCase() === 'timestamp/source'
+  );
+  if (timestampField && card.timestamp) {
+    fields[timestampField] = card.timestamp;
   }
 
   for (const fn of fieldNames) {
@@ -88,7 +94,6 @@ function mapBasicCard(
   const backField = fieldNames.find(f => f.toLowerCase() === 'back');
 
   if (!frontField || !backField) {
-    // Try mapping to first two fields
     if (fieldNames.length >= 2) {
       fields[fieldNames[0]] = card.front || card.text || '';
       fields[fieldNames[1]] = card.back || '';
@@ -105,6 +110,18 @@ function mapBasicCard(
   const extraField = fieldNames.find(f => f.toLowerCase() === 'extra');
   if (extraField && card.extra) {
     fields[extraField] = card.extra;
+  }
+
+  const codeField = fieldNames.find(f => f.toLowerCase() === 'code');
+  if (codeField && card.code) {
+    fields[codeField] = card.code;
+  }
+
+  const timestampField = fieldNames.find(
+    f => f.toLowerCase() === 'timestamp' || f.toLowerCase() === 'timestamp/source'
+  );
+  if (timestampField && card.timestamp) {
+    fields[timestampField] = card.timestamp;
   }
 
   for (const fn of fieldNames) {

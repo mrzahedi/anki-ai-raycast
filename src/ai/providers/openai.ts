@@ -2,7 +2,11 @@ import { AIProviderAdapter, AISettings, Message } from '../types';
 
 export const openaiProvider: AIProviderAdapter = {
   async generate(messages: Message[], settings: AISettings): Promise<string> {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const url = settings.baseUrl
+      ? `${settings.baseUrl.replace(/\/+$/, '')}/chat/completions`
+      : 'https://api.openai.com/v1/chat/completions';
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
