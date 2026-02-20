@@ -1,5 +1,5 @@
 import { LocalStorage, getPreferenceValues } from '@raycast/api';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 const STORAGE_KEYS = {
   lastDeck: 'anki_last_deck',
@@ -15,7 +15,11 @@ interface Defaults {
 
 export function useDefaults(
   deckNameProp?: string
-): Defaults & { persistDefaults: (deck: string, model: string) => Promise<void> } {
+): Defaults & {
+  persistDefaults: (deck: string, model: string) => Promise<void>;
+  persistDeck: (deck: string) => Promise<void>;
+  persistModel: (model: string) => Promise<void>;
+} {
   const { default_deck, default_model, default_tags } = getPreferenceValues<Preferences>();
   const [storedDeck, setStoredDeck] = useState<string | undefined>();
   const [storedModel, setStoredModel] = useState<string | undefined>();
@@ -33,12 +37,24 @@ export function useDefaults(
     })();
   }, []);
 
-  const persistDefaults = async (deck: string, model: string) => {
+  const persistDefaults = useCallback(async (deck: string, model: string) => {
     await Promise.all([
       LocalStorage.setItem(STORAGE_KEYS.lastDeck, deck),
       LocalStorage.setItem(STORAGE_KEYS.lastModel, model),
     ]);
-  };
+    setStoredDeck(deck);
+    setStoredModel(model);
+  }, []);
+
+  const persistDeck = useCallback(async (deck: string) => {
+    await LocalStorage.setItem(STORAGE_KEYS.lastDeck, deck);
+    setStoredDeck(deck);
+  }, []);
+
+  const persistModel = useCallback(async (model: string) => {
+    await LocalStorage.setItem(STORAGE_KEYS.lastModel, model);
+    setStoredModel(model);
+  }, []);
 
   const parsedTags = default_tags
     ? default_tags
@@ -53,5 +69,7 @@ export function useDefaults(
     defaultTags: parsedTags,
     isLoading,
     persistDefaults,
+    persistDeck,
+    persistModel,
   };
 }

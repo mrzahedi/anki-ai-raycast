@@ -1,15 +1,24 @@
 import { LocalStorage } from '@raycast/api';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'anki_draft_state';
-const DEBOUNCE_MS = 300;
+const DEBOUNCE_MS = 150;
 
 export interface DraftState {
   draftText: string;
   fieldValues: Record<string, string>;
-  selectedTemplate: string;
   deckName?: string;
   modelName?: string;
+}
+
+async function persistState(state: DraftState): Promise<void> {
+  const hasContent =
+    state.draftText?.trim() ||
+    Object.values(state.fieldValues || {}).some(v => v?.trim());
+
+  if (hasContent) {
+    await LocalStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
 }
 
 export function useDraftPersistence(
@@ -19,14 +28,17 @@ export function useDraftPersistence(
   clearSavedDraft: () => Promise<void>;
 } {
   const [restoredState, setRestoredState] = useState<DraftState | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasRestoredRef = useRef(false);
+  const latestStateRef = useRef(current);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  latestStateRef.current = current;
 
   useEffect(() => {
     if (hasRestoredRef.current) return;
     hasRestoredRef.current = true;
 
-    (async () => {
+    void (async () => {
       const saved = await LocalStorage.getItem<string>(STORAGE_KEY);
       if (saved) {
         try {
@@ -48,24 +60,24 @@ export function useDraftPersistence(
     if (!hasRestoredRef.current) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(async () => {
-      const hasContent =
-        current.draftText?.trim() ||
-        Object.values(current.fieldValues || {}).some(v => v?.trim());
-      if (hasContent) {
-        await LocalStorage.setItem(STORAGE_KEY, JSON.stringify(current));
-      }
+    timerRef.current = setTimeout(() => {
+      void persistState(current);
     }, DEBOUNCE_MS);
+  }, [current.draftText, current.fieldValues, current.deckName, current.modelName]);
 
+  // Flush pending state on unmount so nothing is lost when closing (e.g. Esc)
+  useEffect(() => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
+      void persistState(latestStateRef.current);
     };
-  }, [current.draftText, current.fieldValues, current.selectedTemplate, current.deckName, current.modelName]);
+  }, []);
 
-  const clearSavedDraft = async () => {
+  const clearSavedDraft = useCallback(async () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
     await LocalStorage.removeItem(STORAGE_KEY);
     setRestoredState(null);
-  };
+  }, []);
 
   return { restoredState, clearSavedDraft };
 }
