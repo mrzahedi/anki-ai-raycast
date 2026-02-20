@@ -78,40 +78,19 @@
       "description": "Show AI-powered actions for card generation and improvement"
     },
     {
-      "name": "ai_provider",
-      "type": "dropdown",
-      "title": "AI Provider",
-      "data": [
-        {
-          "title": "OpenAI",
-          "value": "openai"
-        },
-        {
-          "title": "Anthropic",
-          "value": "anthropic"
-        },
-        {
-          "title": "Google Gemini",
-          "value": "gemini"
-        }
-      ],
-      "default": "openai",
-      "required": false,
-      "description": "Which AI provider to use for card generation"
-    },
-    {
       "name": "ai_api_key",
       "type": "password",
       "required": false,
-      "title": "AI API Key",
-      "description": "API key for the selected AI provider (stored securely)"
+      "title": "Vercel AI Gateway API Key",
+      "description": "API key from your Vercel AI Gateway dashboard (vercel.com/ai-gateway)"
     },
     {
       "name": "ai_model",
       "type": "textfield",
       "required": false,
       "title": "AI Model",
-      "description": "Model name (e.g. gpt-4o-mini, claude-sonnet-4-20250514, gemini-2.0-flash). Leave blank for provider default."
+      "default": "google/gemini-2.0-flash",
+      "description": "Model in provider/name format (e.g. google/gemini-2.5-flash-lite, openai/gpt-4o-mini, anthropic/claude-sonnet-4)"
     },
     {
       "name": "ai_max_output_tokens",
@@ -192,25 +171,18 @@
       "description": "Name of your Anki Cloze note type"
     },
     {
-      "name": "ai_base_url",
-      "type": "textfield",
-      "required": false,
-      "title": "AI Base URL",
-      "description": "Custom API base URL (e.g., Vercel AI Gateway). Leave blank for default provider URL."
-    },
-    {
       "name": "ai_model_heavy",
       "type": "textfield",
       "required": false,
       "title": "AI Model — Generation & Scoring",
-      "description": "Model for card generation, improvement, and quality scoring. Leave blank to use default model."
+      "description": "Model for generation, improvement, and scoring (e.g. openai/gpt-4o). Leave blank to use default model."
     },
     {
       "name": "ai_model_light",
       "type": "textfield",
       "required": false,
       "title": "AI Model — Tags & Auto-Fill",
-      "description": "Model for tag suggestions, auto-fill, and other quick tasks. Leave blank to use default model."
+      "description": "Model for tags, auto-fill, and quick tasks (e.g. google/gemini-2.0-flash). Leave blank to use default model."
     },
     {
       "name": "ai_auto_score_on_add",
@@ -258,14 +230,6 @@
           "required": false,
           "default": false,
           "description": "Show file picker fields for each card field"
-        },
-        {
-          "name": "show_draft_field",
-          "type": "checkbox",
-          "label": "Show Source Notes field",
-          "required": false,
-          "default": true,
-          "description": "Show a multiline field for pasting raw notes that AI can process into card fields"
         }
       ]
     },
@@ -291,12 +255,14 @@
     "@raycast/utils": "^1.17.0",
     "@types/showdown": "^2.0.6",
     "@types/turndown": "^5.0.4",
+    "ai": "^6.0.94",
     "axios": "^1.8.4",
     "glob": "^10.0.0",
     "rimraf": "^5.0.0",
     "rss-parser": "^3.13.0",
     "showdown": "^2.1.0",
-    "turndown": "^7.2.0"
+    "turndown": "^7.2.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@raycast/eslint-config": "1.0.8",

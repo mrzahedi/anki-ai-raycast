@@ -49,7 +49,6 @@ const basicModel = makeModel('Basic', ['Front', 'Back', 'Extra', 'Code', 'Timest
 const clozeModel = makeModel('Cloze', ['Text', 'Extra', 'Timestamp'], 1);
 
 const baseSettings: AISettings = {
-  provider: 'openai',
   apiKey: 'k',
   model: 'm',
   maxOutputTokens: 1024,

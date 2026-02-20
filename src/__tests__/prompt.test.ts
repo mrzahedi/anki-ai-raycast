@@ -3,7 +3,6 @@ import { buildSystemPrompt, buildUserPrompt } from '../ai/prompt';
 import { AISettings } from '../ai/types';
 
 const baseSettings: AISettings = {
-  provider: 'openai',
   apiKey: 'test-key',
   model: 'gpt-4o-mini',
   maxOutputTokens: 1024,

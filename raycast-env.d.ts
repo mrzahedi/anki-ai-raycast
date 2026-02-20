@@ -22,12 +22,10 @@ type ExtensionPreferences = {
   "default_tags"?: string,
   /** undefined - Show AI-powered actions for card generation and improvement */
   "ai_enabled": boolean,
-  /** AI Provider - Which AI provider to use for card generation */
-  "ai_provider": "openai" | "anthropic" | "gemini",
-  /** AI API Key - API key for the selected AI provider (stored securely) */
+  /** Vercel AI Gateway API Key - API key from your Vercel AI Gateway dashboard (vercel.com/ai-gateway) */
   "ai_api_key"?: string,
-  /** AI Model - Model name (e.g. gpt-4o-mini, claude-sonnet-4-20250514, gemini-2.0-flash). Leave blank for provider default. */
-  "ai_model"?: string,
+  /** AI Model - Model in provider/name format (e.g. google/gemini-2.5-flash-lite, openai/gpt-4o-mini, anthropic/claude-sonnet-4) */
+  "ai_model": string,
   /** AI Max Output Tokens - Maximum tokens in AI response */
   "ai_max_output_tokens": string,
   /** AI Temperature - Creativity level (0.0 = deterministic, 1.0 = creative) */
@@ -42,11 +40,9 @@ type ExtensionPreferences = {
   "basic_model_name": string,
   /** Cloze Model Name - Name of your Anki Cloze note type */
   "cloze_model_name": string,
-  /** AI Base URL - Custom API base URL (e.g., Vercel AI Gateway). Leave blank for default provider URL. */
-  "ai_base_url"?: string,
-  /** AI Model — Generation & Scoring - Model for card generation, improvement, and quality scoring. Leave blank to use default model. */
+  /** AI Model — Generation & Scoring - Model for generation, improvement, and scoring (e.g. openai/gpt-4o). Leave blank to use default model. */
   "ai_model_heavy"?: string,
-  /** AI Model — Tags & Auto-Fill - Model for tag suggestions, auto-fill, and other quick tasks. Leave blank to use default model. */
+  /** AI Model — Tags & Auto-Fill - Model for tags, auto-fill, and quick tasks (e.g. google/gemini-2.0-flash). Leave blank to use default model. */
   "ai_model_light"?: string,
   /** undefined - When enabled, Add Card runs AI quality scoring first and asks for confirmation. */
   "ai_auto_score_on_add": boolean
@@ -65,9 +61,7 @@ declare namespace Preferences {
   /** undefined - Enabling this will allow you to create cards with empty fields */
   "allow_empty_card_fields"?: boolean,
   /** undefined - Show file picker fields for each card field */
-  "enable_attachments": boolean,
-  /** undefined - Show a multiline field for pasting raw notes that AI can process into card fields */
-  "show_draft_field": boolean
+  "enable_attachments": boolean
 }
   /** Preferences accessible in the `viewStats` command */
   export type ViewStats = ExtensionPreferences & {}
@@ -87,3 +81,4 @@ declare namespace Arguments {
   /** Arguments passed to the `generateCards` command */
   export type GenerateCards = {}
 }
+
