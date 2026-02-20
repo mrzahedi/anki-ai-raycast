@@ -190,6 +190,35 @@
       "title": "Cloze Model Name",
       "default": "Cloze",
       "description": "Name of your Anki Cloze note type"
+    },
+    {
+      "name": "ai_base_url",
+      "type": "textfield",
+      "required": false,
+      "title": "AI Base URL",
+      "description": "Custom API base URL (e.g., Vercel AI Gateway). Leave blank for default provider URL."
+    },
+    {
+      "name": "ai_model_heavy",
+      "type": "textfield",
+      "required": false,
+      "title": "AI Model — Generation & Scoring",
+      "description": "Model for card generation, improvement, and quality scoring. Leave blank to use default model."
+    },
+    {
+      "name": "ai_model_light",
+      "type": "textfield",
+      "required": false,
+      "title": "AI Model — Tags & Auto-Fill",
+      "description": "Model for tag suggestions, auto-fill, and other quick tasks. Leave blank to use default model."
+    },
+    {
+      "name": "ai_auto_score_on_add",
+      "type": "checkbox",
+      "label": "Auto-score card before add",
+      "required": false,
+      "default": true,
+      "description": "When enabled, Add Card runs AI quality scoring first and asks for confirmation."
     }
   ],
   "license": "MIT",
@@ -231,20 +260,12 @@
           "description": "Show file picker fields for each card field"
         },
         {
-          "name": "show_field_hints",
-          "type": "checkbox",
-          "label": "Show field hints when template selected",
-          "required": false,
-          "default": true,
-          "description": "Display template-specific labels and placeholders on form fields"
-        },
-        {
           "name": "show_draft_field",
           "type": "checkbox",
-          "label": "Show Draft/Notes field",
+          "label": "Show Source Notes field",
           "required": false,
           "default": true,
-          "description": "Show a multiline draft field for quick note capture and AI input"
+          "description": "Show a multiline field for pasting raw notes that AI can process into card fields"
         }
       ]
     },

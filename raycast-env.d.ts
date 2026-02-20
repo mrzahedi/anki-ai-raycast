@@ -41,7 +41,15 @@ type ExtensionPreferences = {
   /** Basic Model Name - Name of your Anki Basic note type */
   "basic_model_name": string,
   /** Cloze Model Name - Name of your Anki Cloze note type */
-  "cloze_model_name": string
+  "cloze_model_name": string,
+  /** AI Base URL - Custom API base URL (e.g., Vercel AI Gateway). Leave blank for default provider URL. */
+  "ai_base_url"?: string,
+  /** AI Model — Generation & Scoring - Model for card generation, improvement, and quality scoring. Leave blank to use default model. */
+  "ai_model_heavy"?: string,
+  /** AI Model — Tags & Auto-Fill - Model for tag suggestions, auto-fill, and other quick tasks. Leave blank to use default model. */
+  "ai_model_light"?: string,
+  /** undefined - When enabled, Add Card runs AI quality scoring first and asks for confirmation. */
+  "ai_auto_score_on_add": boolean
 }
 
 /** Preferences accessible in all the extension's commands */
@@ -58,9 +66,7 @@ declare namespace Preferences {
   "allow_empty_card_fields"?: boolean,
   /** undefined - Show file picker fields for each card field */
   "enable_attachments": boolean,
-  /** undefined - Display template-specific labels and placeholders on form fields */
-  "show_field_hints": boolean,
-  /** undefined - Show a multiline draft field for quick note capture and AI input */
+  /** undefined - Show a multiline field for pasting raw notes that AI can process into card fields */
   "show_draft_field": boolean
 }
   /** Preferences accessible in the `viewStats` command */
@@ -81,4 +87,3 @@ declare namespace Arguments {
   /** Arguments passed to the `generateCards` command */
   export type GenerateCards = {}
 }
-
