@@ -6,6 +6,7 @@ import {
   AIResponse,
   AICard,
   NoteType,
+  AITask,
   getDefaultModel,
   Message,
 } from './types';
@@ -13,17 +14,30 @@ import { buildSystemPrompt, buildUserPrompt } from './prompt';
 import { parseAIResponse } from './parser';
 import { mapAICardToAnkiFields } from './fieldMapper';
 import { buildScoringMessages, parseScoreResponse, CardScore } from './scoring';
+import { buildAutoFillMessages, parseAutoFillResponse, AutoFillResult } from './autoFill';
 import { openaiProvider } from './providers/openai';
 import { anthropicProvider } from './providers/anthropic';
 import { geminiProvider } from './providers/gemini';
 
-function getAISettings(): AISettings {
+function getAISettings(task: AITask = 'heavy'): AISettings {
   const prefs = getPreferenceValues<Preferences>();
   const provider = (prefs.ai_provider || 'openai') as AISettings['provider'];
+  const defaultModel = getDefaultModel(provider);
+
+  let model: string;
+  if (task === 'light' && prefs.ai_model_light) {
+    model = prefs.ai_model_light;
+  } else if (task === 'heavy' && prefs.ai_model_heavy) {
+    model = prefs.ai_model_heavy;
+  } else {
+    model = prefs.ai_model || defaultModel;
+  }
+
   return {
     provider,
     apiKey: prefs.ai_api_key || '',
-    model: prefs.ai_model || getDefaultModel(provider),
+    baseUrl: prefs.ai_base_url || undefined,
+    model,
     maxOutputTokens: parseInt(prefs.ai_max_output_tokens || '1024', 10),
     temperature: parseFloat(prefs.ai_temperature || '0.3'),
     noteTypeMode: (prefs.ai_note_type_mode || 'auto') as AISettings['noteTypeMode'],
@@ -54,11 +68,10 @@ async function generateAndParse(
   action: 'autocomplete' | 'improve' | 'generate' | 'convert',
   content: string,
   settings: AISettings,
-  template?: AIActionContext['selectedTemplate'],
   convertMode?: 'auto' | 'basic' | 'cloze',
   count?: number
 ): Promise<AIResponse> {
-  const systemPrompt = buildSystemPrompt(settings, template);
+  const systemPrompt = buildSystemPrompt(settings);
   const userPrompt = buildUserPrompt(action, content, convertMode, count);
 
   const messages: Message[] = [
@@ -109,7 +122,7 @@ function applyAIResultToForm(
   if ('error' in mapping) {
     showToast({
       style: Toast.Style.Failure,
-      title: 'Model Incompatibility',
+      title: 'Note Type Incompatibility',
       message: mapping.error,
     });
     return;
@@ -139,8 +152,8 @@ function applyAIResultToForm(
   }
 }
 
-async function withAIErrorHandling(fn: () => Promise<void>): Promise<void> {
-  const settings = getAISettings();
+async function withAIErrorHandling(fn: () => Promise<void>, task: AITask = 'heavy'): Promise<void> {
+  const settings = getAISettings(task);
 
   if (!settings.apiKey) {
     showToast({
@@ -181,24 +194,19 @@ async function withAIErrorHandling(fn: () => Promise<void>): Promise<void> {
 
 export async function handleAIAutocomplete(ctx: AIActionContext): Promise<void> {
   await withAIErrorHandling(async () => {
-    const settings = getAISettings();
+    const settings = getAISettings('heavy');
     const content = ctx.draftText || buildContentFromFields(ctx.fieldValues, ctx.values);
 
     if (!content.trim()) {
       showToast({
         style: Toast.Style.Failure,
         title: 'No content',
-        message: 'Enter draft notes or field content first',
+        message: 'Enter source notes or field content first',
       });
       return;
     }
 
-    const response = await generateAndParse(
-      'autocomplete',
-      content,
-      settings,
-      ctx.selectedTemplate
-    );
+    const response = await generateAndParse('autocomplete', content, settings);
 
     if (settings.dryRun) {
       showToast({
@@ -210,12 +218,12 @@ export async function handleAIAutocomplete(ctx: AIActionContext): Promise<void> 
     }
 
     applyAIResultToForm(response, ctx, settings);
-  });
+  }, 'heavy');
 }
 
 export async function handleAIImprove(ctx: Omit<AIActionContext, 'draftText'>): Promise<void> {
   await withAIErrorHandling(async () => {
-    const settings = getAISettings();
+    const settings = getAISettings('heavy');
     const content = buildContentFromFields(ctx.fieldValues, ctx.values);
 
     if (!content.trim()) {
@@ -227,7 +235,7 @@ export async function handleAIImprove(ctx: Omit<AIActionContext, 'draftText'>): 
       return;
     }
 
-    const response = await generateAndParse('improve', content, settings, ctx.selectedTemplate);
+    const response = await generateAndParse('improve', content, settings);
 
     if (settings.dryRun) {
       showToast({
@@ -239,12 +247,12 @@ export async function handleAIImprove(ctx: Omit<AIActionContext, 'draftText'>): 
     }
 
     applyAIResultToForm(response, ctx, settings);
-  });
+  }, 'heavy');
 }
 
 export async function handleAIConvert(ctx: AIConvertContext): Promise<void> {
   await withAIErrorHandling(async () => {
-    const settings = getAISettings();
+    const settings = getAISettings('heavy');
 
     if (ctx.mode === 'basic') {
       settings.noteTypeMode = 'basic_only';
@@ -263,13 +271,7 @@ export async function handleAIConvert(ctx: AIConvertContext): Promise<void> {
       return;
     }
 
-    const response = await generateAndParse(
-      'convert',
-      content,
-      settings,
-      ctx.selectedTemplate,
-      ctx.mode
-    );
+    const response = await generateAndParse('convert', content, settings, ctx.mode);
 
     if (settings.dryRun) {
       showToast({
@@ -281,21 +283,20 @@ export async function handleAIConvert(ctx: AIConvertContext): Promise<void> {
     }
 
     applyAIResultToForm(response, ctx, settings);
-  });
+  }, 'heavy');
 }
 
 export async function generateCardsFromDraft(
   draftText: string,
-  count: number,
-  template?: AIActionContext['selectedTemplate']
+  count: number
 ): Promise<AIResponse> {
-  const settings = getAISettings();
+  const settings = getAISettings('heavy');
 
   if (!settings.apiKey) {
     throw new Error('AI API key not configured');
   }
 
-  return generateAndParse('generate', draftText, settings, template, undefined, count);
+  return generateAndParse('generate', draftText, settings, undefined, count);
 }
 
 export async function handleAIScore(
@@ -304,7 +305,7 @@ export async function handleAIScore(
   let result: CardScore | null = null;
 
   await withAIErrorHandling(async () => {
-    const settings = getAISettings();
+    const settings = getAISettings('heavy');
     const content = buildContentFromFields(ctx.fieldValues, ctx.values);
 
     if (!content.trim()) {
@@ -321,6 +322,7 @@ export async function handleAIScore(
       back: ctx.fieldValues['field_Back'] || (ctx.values['field_Back'] as string) || undefined,
       text: ctx.fieldValues['field_Text'] || (ctx.values['field_Text'] as string) || undefined,
       extra: ctx.fieldValues['field_Extra'] || (ctx.values['field_Extra'] as string) || undefined,
+      code: ctx.fieldValues['field_Code'] || (ctx.values['field_Code'] as string) || undefined,
       tags: (ctx.values.tags as string[]) || [],
     };
 
@@ -337,7 +339,7 @@ export async function handleAIScore(
         message: result.feedback.slice(0, 2).join(' | ').slice(0, 100),
       });
     }
-  });
+  }, 'heavy');
 
   return result;
 }
@@ -346,7 +348,7 @@ export async function scoreCards(
   cards: AICard[],
   noteType?: NoteType
 ): Promise<CardScore[]> {
-  const settings = getAISettings();
+  const settings = getAISettings('heavy');
   if (!settings.apiKey) throw new Error('AI API key not configured');
 
   const messages = buildScoringMessages(cards, noteType);
@@ -355,11 +357,33 @@ export async function scoreCards(
   return response.scores;
 }
 
+export async function scoreSingleCard(card: AICard, noteType?: NoteType): Promise<CardScore> {
+  const settings = getAISettings('heavy');
+  if (!settings.apiKey) throw new Error('AI API key not configured');
+
+  await showToast({ style: Toast.Style.Animated, title: 'Scoring card quality...' });
+
+  const messages = buildScoringMessages([card], noteType);
+  const raw = await callAI(messages, settings);
+  const response = parseScoreResponse(raw);
+  const score = response.scores[0];
+  if (!score) throw new Error('AI scoring returned no score');
+
+  const emoji = score.score >= 8 ? '🟢' : score.score >= 5 ? '🟡' : '🔴';
+  showToast({
+    style: Toast.Style.Success,
+    title: `${emoji} Score: ${score.score}/10 — ${score.grade}`,
+    message: score.feedback.slice(0, 2).join(' | ').slice(0, 100),
+  });
+
+  return score;
+}
+
 export async function handleAISuggestTags(
   ctx: Omit<AIActionContext, 'draftText'>
 ): Promise<void> {
   await withAIErrorHandling(async () => {
-    const settings = getAISettings();
+    const settings = getAISettings('light');
     const content = buildContentFromFields(ctx.fieldValues, ctx.values);
 
     if (!content.trim()) {
@@ -371,11 +395,22 @@ export async function handleAISuggestTags(
       return;
     }
 
+    const existingTags = ctx.availableTags;
+    const tagContext = existingTags && existingTags.length > 0
+      ? `\n\nExisting tags to prefer (reuse these over creating new ones):\n${existingTags.slice(0, 150).join(', ')}`
+      : '';
+
     const messages: Message[] = [
       {
         role: 'system',
-        content:
-          'You are a flashcard organization expert. Given flashcard content, suggest 3-8 relevant tags for categorization and retrieval. Respond with ONLY a JSON array of lowercase tag strings, e.g. ["tag1", "tag2"]. Use hyphens for multi-word tags. Be specific and useful.',
+        content: `You are a flashcard organization expert. Given flashcard content, suggest 1-3 relevant tags.
+
+CRITICAL RULES:
+- STRONGLY prefer reusing existing tags from the list below over creating new ones.
+- Match the hierarchical format of existing tags (e.g., A::B::Topic::SubTopic).
+- Only create a new tag if absolutely no existing tag fits.
+- Keep it to 1-3 tags. Fewer is better.
+- Respond with ONLY a JSON array of tag strings.${tagContext}`,
       },
       {
         role: 'user',
@@ -401,33 +436,52 @@ export async function handleAISuggestTags(
 
     showToast({
       style: Toast.Style.Success,
-      title: `Added ${suggested.length} tag suggestions`,
+      title: `Added ${suggested.length} tag${suggested.length !== 1 ? 's' : ''}`,
       message: suggested.join(', ').slice(0, 80),
     });
-  });
+  }, 'light');
 }
 
-export async function detectTemplate(draftText: string): Promise<string | null> {
-  const settings = getAISettings();
+export async function handleAutoFill(
+  clipboardText: string,
+  deckNames: string[],
+  noteTypeNames: string[],
+  noteTypeFields: Record<string, string[]>,
+  existingTags: string[],
+  lastUsedDeck?: string,
+  lastUsedModel?: string
+): Promise<AutoFillResult | null> {
+  const settings = getAISettings('light');
+
   if (!settings.apiKey) return null;
 
-  const messages: Message[] = [
-    {
-      role: 'system',
-      content:
-        'You classify flashcard content into template categories. Respond with ONLY one of these IDs: DSA_CONCEPT, SD_CONCEPT, LEETCODE_SR, SD_CASE, BEHAVIORAL, NONE. No explanation, just the ID.',
-    },
-    {
-      role: 'user',
-      content: `Classify this content:\n\n${draftText.slice(0, 500)}`,
-    },
-  ];
-
   try {
+    await showToast({ style: Toast.Style.Animated, title: 'AI analyzing clipboard...' });
+
+    const messages = buildAutoFillMessages(
+      clipboardText,
+      deckNames,
+      noteTypeNames,
+      noteTypeFields,
+      existingTags,
+      lastUsedDeck,
+      lastUsedModel,
+      settings.basicModelName,
+      settings.clozeModelName
+    );
+
     const raw = await callAI(messages, settings);
-    const id = raw.trim().toUpperCase();
-    const valid = ['DSA_CONCEPT', 'SD_CONCEPT', 'LEETCODE_SR', 'SD_CASE', 'BEHAVIORAL'];
-    return valid.includes(id) ? id : null;
+    const result = parseAutoFillResponse(raw);
+
+    if (result.confidence > 0) {
+      showToast({
+        style: Toast.Style.Success,
+        title: 'AI auto-filled from clipboard',
+        message: `${result.noteType} card · ${result.tags.length} tag${result.tags.length !== 1 ? 's' : ''}`,
+      });
+    }
+
+    return result;
   } catch {
     return null;
   }
