@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildSystemPrompt, buildUserPrompt } from '../ai/prompt';
 import { AISettings } from '../ai/types';
-import { TEMPLATES } from '../templates';
 
 const baseSettings: AISettings = {
   provider: 'openai',
@@ -17,17 +16,19 @@ const baseSettings: AISettings = {
 };
 
 describe('buildSystemPrompt', () => {
-  it('includes template context when a template is provided', () => {
-    const template = TEMPLATES[0]; // DSA Concept
-    const prompt = buildSystemPrompt(baseSettings, template);
-    expect(prompt).toContain(template.name);
-    expect(prompt).toContain('dsa');
-    expect(prompt).toContain('hellointerview');
+  it('includes note type fields for Basic', () => {
+    const prompt = buildSystemPrompt(baseSettings);
+    expect(prompt).toContain('Front');
+    expect(prompt).toContain('Back');
+    expect(prompt).toContain('Extra');
+    expect(prompt).toContain('Code');
+    expect(prompt).toContain('Timestamp');
   });
 
-  it('says no template when none provided', () => {
+  it('includes note type fields for Cloze', () => {
     const prompt = buildSystemPrompt(baseSettings);
-    expect(prompt).toContain('No template selected');
+    expect(prompt).toContain('Text');
+    expect(prompt).toContain('cloze');
   });
 
   it('includes auto mode instructions in auto mode', () => {
@@ -35,7 +36,6 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Choose the best note type');
     expect(prompt).toContain('When to choose CLOZE');
     expect(prompt).toContain('When to choose BASIC');
-    expect(prompt).toContain('PER CARD');
     expect(prompt).toContain('noteType');
   });
 

@@ -4,7 +4,6 @@ import { mapAICardToAnkiFields } from '../ai/fieldMapper';
 import { buildSystemPrompt, buildUserPrompt } from '../ai/prompt';
 import { AISettings } from '../ai/types';
 import { Model, Field } from '../types';
-import { TEMPLATES } from '../templates';
 
 // -- helpers --
 
@@ -46,8 +45,8 @@ function makeModel(name: string, fields: string[], type = 0): Model {
   };
 }
 
-const basicModel = makeModel('Basic', ['Front', 'Back', 'Extra']);
-const clozeModel = makeModel('Cloze', ['Text', 'Extra'], 1);
+const basicModel = makeModel('Basic', ['Front', 'Back', 'Extra', 'Code', 'Timestamp/Source']);
+const clozeModel = makeModel('Cloze', ['Text', 'Extra', 'Timestamp'], 1);
 
 const baseSettings: AISettings = {
   provider: 'openai',
@@ -66,7 +65,6 @@ const baseSettings: AISettings = {
 
 describe('AI pipeline: parse -> map (Basic)', () => {
   const mockApiResponse = JSON.stringify({
-    selectedTemplate: 'LEETCODE_SR',
     selectedNoteType: 'BASIC',
     cards: [
       {
@@ -102,7 +100,6 @@ describe('AI pipeline: parse -> map (Basic)', () => {
 
 describe('AI pipeline: parse -> map (Cloze)', () => {
   const mockApiResponse = JSON.stringify({
-    selectedTemplate: 'SD_CONCEPT',
     selectedNoteType: 'CLOZE',
     cards: [
       {
@@ -193,15 +190,23 @@ describe('AI pipeline: multi-card generation', () => {
   });
 });
 
-describe('prompt snapshots per template', () => {
-  it.each(TEMPLATES)('produces stable prompt for template "$name"', template => {
-    const system = buildSystemPrompt(baseSettings, template);
-    const user = buildUserPrompt('autocomplete', 'sample notes');
+describe('prompt includes note type fields', () => {
+  it('includes Basic note type fields in system prompt', () => {
+    const system = buildSystemPrompt(baseSettings);
+    expect(system).toContain('Front');
+    expect(system).toContain('Back');
+    expect(system).toContain('Extra');
+    expect(system).toContain('Code');
+    expect(system).toContain('Timestamp');
+  });
 
-    expect(system).toContain(template.name);
-    for (const tag of template.tags) {
-      expect(system).toContain(tag);
-    }
+  it('includes Cloze note type fields in system prompt', () => {
+    const system = buildSystemPrompt(baseSettings);
+    expect(system).toContain('Text');
+  });
+
+  it('builds user prompt for autocomplete', () => {
+    const user = buildUserPrompt('autocomplete', 'sample notes');
     expect(user).toContain('sample notes');
   });
 });

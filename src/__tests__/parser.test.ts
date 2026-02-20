@@ -20,7 +20,6 @@ describe('parseAIResponse', () => {
   it('parses clean JSON correctly', () => {
     const result = parseAIResponse(validResponse);
     expect(result.selectedNoteType).toBe('BASIC');
-    expect(result.selectedTemplate).toBe('DSA_CONCEPT');
     expect(result.cards).toHaveLength(1);
     expect(result.cards[0].front).toBe('What is a trie?');
     expect(result.cards[0].tags).toEqual(['dsa', 'concept']);
@@ -49,14 +48,15 @@ describe('parseAIResponse', () => {
     expect(result.selectedNoteType).toBe('BASIC');
   });
 
-  it('sets selectedTemplate to undefined for unknown template ids', () => {
-    const bad = JSON.stringify({
+  it('ignores unknown fields gracefully', () => {
+    const withExtra = JSON.stringify({
       selectedTemplate: 'NOT_A_TEMPLATE',
       selectedNoteType: 'BASIC',
       cards: [{ front: 'x', back: 'y', tags: [] }],
     });
-    const result = parseAIResponse(bad);
-    expect(result.selectedTemplate).toBeUndefined();
+    const result = parseAIResponse(withExtra);
+    expect(result.selectedNoteType).toBe('BASIC');
+    expect(result.cards).toHaveLength(1);
   });
 
   it('throws when cards array is empty', () => {
