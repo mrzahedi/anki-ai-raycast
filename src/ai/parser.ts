@@ -62,9 +62,19 @@ export function parseAIResponse(raw: string): AIResponse {
 
   const cards = obj.cards.map((c: unknown, i: number) => validateCard(c, i));
 
+  const deck = typeof obj.deck === 'string' ? obj.deck : undefined;
+  const score =
+    typeof obj.score === 'number' ? Math.min(10, Math.max(1, Math.round(obj.score))) : undefined;
+  const scoreFeedback = Array.isArray(obj.scoreFeedback)
+    ? obj.scoreFeedback.filter((f: unknown): f is string => typeof f === 'string')
+    : undefined;
+
   return {
     selectedNoteType,
     cards,
     notes: typeof obj.notes === 'string' ? obj.notes : '',
+    deck,
+    score,
+    scoreFeedback,
   };
 }

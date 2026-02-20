@@ -1,4 +1,5 @@
 import { getPreferenceValues, showToast, Toast } from '@raycast/api';
+import { createGateway, generateText } from 'ai';
 import {
   AIActionContext,
   AIConvertContext,
@@ -7,22 +8,19 @@ import {
   AICard,
   NoteType,
   AITask,
-  getDefaultModel,
+  DEFAULT_MODEL,
   Message,
+  ComprehensiveFillContext,
 } from './types';
-import { buildSystemPrompt, buildUserPrompt } from './prompt';
+import { buildSystemPrompt, buildUserPrompt, buildComprehensiveFillPrompt } from './prompt';
 import { parseAIResponse } from './parser';
 import { mapAICardToAnkiFields } from './fieldMapper';
 import { buildScoringMessages, parseScoreResponse, CardScore } from './scoring';
 import { buildAutoFillMessages, parseAutoFillResponse, AutoFillResult } from './autoFill';
-import { openaiProvider } from './providers/openai';
-import { anthropicProvider } from './providers/anthropic';
-import { geminiProvider } from './providers/gemini';
+import { detectContentType, getContentTypeLabel } from './contentDetection';
 
 function getAISettings(task: AITask = 'heavy'): AISettings {
   const prefs = getPreferenceValues<Preferences>();
-  const provider = (prefs.ai_provider || 'openai') as AISettings['provider'];
-  const defaultModel = getDefaultModel(provider);
 
   let model: string;
   if (task === 'light' && prefs.ai_model_light) {
@@ -30,13 +28,11 @@ function getAISettings(task: AITask = 'heavy'): AISettings {
   } else if (task === 'heavy' && prefs.ai_model_heavy) {
     model = prefs.ai_model_heavy;
   } else {
-    model = prefs.ai_model || defaultModel;
+    model = prefs.ai_model || DEFAULT_MODEL;
   }
 
   return {
-    provider,
     apiKey: prefs.ai_api_key || '',
-    baseUrl: prefs.ai_base_url || undefined,
     model,
     maxOutputTokens: parseInt(prefs.ai_max_output_tokens || '1024', 10),
     temperature: parseFloat(prefs.ai_temperature || '0.3'),
@@ -48,20 +44,15 @@ function getAISettings(task: AITask = 'heavy'): AISettings {
   };
 }
 
-function getProvider(settings: AISettings) {
-  switch (settings.provider) {
-    case 'openai':
-      return openaiProvider;
-    case 'anthropic':
-      return anthropicProvider;
-    case 'gemini':
-      return geminiProvider;
-  }
-}
-
 async function callAI(messages: Message[], settings: AISettings): Promise<string> {
-  const provider = getProvider(settings);
-  return provider.generate(messages, settings);
+  const gateway = createGateway({ apiKey: settings.apiKey });
+  const { text } = await generateText({
+    model: gateway(settings.model),
+    messages: messages.map(m => ({ role: m.role, content: m.content })),
+    maxOutputTokens: settings.maxOutputTokens,
+    temperature: settings.temperature,
+  });
+  return text;
 }
 
 async function generateAndParse(
@@ -71,7 +62,8 @@ async function generateAndParse(
   convertMode?: 'auto' | 'basic' | 'cloze',
   count?: number
 ): Promise<AIResponse> {
-  const systemPrompt = buildSystemPrompt(settings);
+  const contentType = detectContentType(content);
+  const systemPrompt = buildSystemPrompt(settings, contentType);
   const userPrompt = buildUserPrompt(action, content, convertMode, count);
 
   const messages: Message[] = [
@@ -128,7 +120,11 @@ function applyAIResultToForm(
     return;
   }
 
-  ctx.setValue('modelName', mapping.modelName);
+  if (ctx.handleModelSwitch && mapping.modelName !== (ctx.values.modelName as string)) {
+    ctx.handleModelSwitch(mapping.modelName);
+  } else {
+    ctx.setValue('modelName', mapping.modelName);
+  }
 
   const newFieldValues: Record<string, string> = {};
   for (const [fieldName, fieldValue] of Object.entries(mapping.fields)) {
@@ -159,7 +155,7 @@ async function withAIErrorHandling(fn: () => Promise<void>, task: AITask = 'heav
     showToast({
       style: Toast.Style.Failure,
       title: 'AI API key not configured',
-      message: 'Set it in Raycast Preferences → Anki → AI API Key',
+      message: 'Set your Vercel AI Gateway key in Preferences → Anki',
     });
     return;
   }
@@ -169,12 +165,13 @@ async function withAIErrorHandling(fn: () => Promise<void>, task: AITask = 'heav
     await fn();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error('AI error:', error);
 
-    if (message.includes('API error')) {
+    if (message.includes('API error') || message.includes('401') || message.includes('403')) {
       showToast({
         style: Toast.Style.Failure,
         title: 'AI request failed',
-        message: 'Check your API key and network connection',
+        message: 'Check your Vercel AI Gateway API key and network connection',
       });
     } else if (message.includes('JSON') || message.includes('No JSON')) {
       showToast({
@@ -190,6 +187,111 @@ async function withAIErrorHandling(fn: () => Promise<void>, task: AITask = 'heav
       });
     }
   }
+}
+
+export async function handleComprehensiveFill(ctx: ComprehensiveFillContext): Promise<void> {
+  await withAIErrorHandling(async () => {
+    const settings = getAISettings('heavy');
+    const sourceText = ctx.sourceText.trim();
+
+    if (!sourceText) {
+      showToast({
+        style: Toast.Style.Failure,
+        title: 'No source material',
+        message: 'Paste content into the AI Source Material field first',
+      });
+      return;
+    }
+
+    const contentType = detectContentType(sourceText);
+    const contentLabel = getContentTypeLabel(contentType);
+    await showToast({ style: Toast.Style.Animated, title: `AI: Detected ${contentLabel}...` });
+
+    const deckNames = ctx.decks.map(d => d.name);
+    const existingTags = ctx.availableTags;
+
+    const systemPrompt = buildComprehensiveFillPrompt(
+      settings,
+      contentType,
+      deckNames,
+      existingTags,
+      ctx.defaultDeck
+    );
+
+    const messages: Message[] = [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: `Create a single flashcard from this source material:\n\n${sourceText}`,
+      },
+    ];
+
+    const raw = await callAI(messages, settings);
+    const response = parseAIResponse(raw);
+
+    if (settings.dryRun) {
+      showToast({
+        style: Toast.Style.Success,
+        title: 'Dry Run',
+        message: JSON.stringify(response, null, 2).slice(0, 200),
+      });
+      return;
+    }
+
+    const card = response.cards[0];
+    if (!card) return;
+
+    const mapping = mapAICardToAnkiFields(
+      card,
+      response.selectedNoteType,
+      ctx.models,
+      settings.basicModelName,
+      settings.clozeModelName
+    );
+
+    if ('error' in mapping) {
+      showToast({
+        style: Toast.Style.Failure,
+        title: 'Note Type Incompatibility',
+        message: mapping.error,
+      });
+      return;
+    }
+
+    ctx.handleModelSwitch(mapping.modelName);
+
+    const newFieldValues: Record<string, string> = {};
+    for (const [fieldName, fieldValue] of Object.entries(mapping.fields)) {
+      newFieldValues[`field_${fieldName}`] = fieldValue;
+    }
+    ctx.setFieldValues(prev => ({ ...prev, ...newFieldValues }));
+
+    if (response.deck && deckNames.includes(response.deck)) {
+      ctx.setValue('deckName', response.deck);
+    }
+
+    const allSuggestedTags: string[] = [];
+    if (card.tags && card.tags.length > 0) {
+      allSuggestedTags.push(...card.tags);
+    }
+    if (allSuggestedTags.length > 0) {
+      const currentTags = (ctx.values.tags as string[]) || [];
+      const merged = [...new Set([...currentTags, ...allSuggestedTags])];
+      ctx.setValue('tags', merged);
+      ctx.setSuggestedTags(prev => [...new Set([...prev, ...allSuggestedTags])]);
+    }
+
+    if (response.score) {
+      ctx.setQualityScore(response.score);
+    }
+
+    const scorePart = response.score ? ` · Score: ${response.score}/10` : '';
+    showToast({
+      style: Toast.Style.Success,
+      title: `AI: ${contentLabel} → ${response.selectedNoteType}${scorePart}`,
+      message: response.notes?.slice(0, 100) || 'Card filled successfully',
+    });
+  }, 'heavy');
 }
 
 export async function handleAIAutocomplete(ctx: AIActionContext): Promise<void> {
@@ -344,10 +446,7 @@ export async function handleAIScore(
   return result;
 }
 
-export async function scoreCards(
-  cards: AICard[],
-  noteType?: NoteType
-): Promise<CardScore[]> {
+export async function scoreCards(cards: AICard[], noteType?: NoteType): Promise<CardScore[]> {
   const settings = getAISettings('heavy');
   if (!settings.apiKey) throw new Error('AI API key not configured');
 
@@ -380,7 +479,9 @@ export async function scoreSingleCard(card: AICard, noteType?: NoteType): Promis
 }
 
 export async function handleAISuggestTags(
-  ctx: Omit<AIActionContext, 'draftText'>
+  ctx: Omit<AIActionContext, 'draftText'> & {
+    setSuggestedTags?: React.Dispatch<React.SetStateAction<string[]>>;
+  }
 ): Promise<void> {
   await withAIErrorHandling(async () => {
     const settings = getAISettings('light');
@@ -396,9 +497,10 @@ export async function handleAISuggestTags(
     }
 
     const existingTags = ctx.availableTags;
-    const tagContext = existingTags && existingTags.length > 0
-      ? `\n\nExisting tags to prefer (reuse these over creating new ones):\n${existingTags.slice(0, 150).join(', ')}`
-      : '';
+    const tagContext =
+      existingTags && existingTags.length > 0
+        ? `\n\nExisting tags to prefer (reuse these over creating new ones):\n${existingTags.slice(0, 150).join(', ')}`
+        : '';
 
     const messages: Message[] = [
       {
@@ -429,6 +531,10 @@ CRITICAL RULES:
     const suggested: string[] = JSON.parse(match[0]).filter(
       (t: unknown): t is string => typeof t === 'string' && t.trim().length > 0
     );
+
+    if (ctx.setSuggestedTags) {
+      ctx.setSuggestedTags(prev => [...new Set([...prev, ...suggested])]);
+    }
 
     const currentTags = (ctx.values.tags as string[]) || [];
     const merged = [...new Set([...currentTags, ...suggested])];
@@ -482,7 +588,14 @@ export async function handleAutoFill(
     }
 
     return result;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('AI auto-fill failed:', error);
+    await showToast({
+      style: Toast.Style.Failure,
+      title: 'AI auto-fill failed',
+      message: message.slice(0, 120),
+    });
     return null;
   }
 }

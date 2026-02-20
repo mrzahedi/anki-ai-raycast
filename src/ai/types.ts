@@ -1,14 +1,13 @@
-import { Model } from '../types';
+import { DeckStats, Model } from '../types';
 
-export type AIProvider = 'openai' | 'anthropic' | 'gemini';
+export const DEFAULT_MODEL = 'google/gemini-2.0-flash';
+
 export type NoteTypeMode = 'auto' | 'prefer_basic' | 'prefer_cloze' | 'basic_only' | 'cloze_only';
 export type NoteType = 'BASIC' | 'CLOZE';
 export type AITask = 'heavy' | 'light';
 
 export interface AISettings {
-  provider: AIProvider;
   apiKey: string;
-  baseUrl?: string;
   model: string;
   maxOutputTokens: number;
   temperature: number;
@@ -22,10 +21,6 @@ export interface AISettings {
 export interface Message {
   role: 'system' | 'user' | 'assistant';
   content: string;
-}
-
-export interface AIProviderAdapter {
-  generate(messages: Message[], settings: AISettings): Promise<string>;
 }
 
 export interface AICard {
@@ -45,6 +40,9 @@ export interface AIResponse {
   selectedNoteType: NoteType;
   cards: AICard[];
   notes: string;
+  deck?: string;
+  score?: number;
+  scoreFeedback?: string[];
 }
 
 export type FormValueSetter = (id: string, value: string | string[]) => void;
@@ -57,19 +55,24 @@ export interface AIActionContext {
   setValue: FormValueSetter;
   models: Model[];
   availableTags?: string[];
+  handleModelSwitch?: (modelName: string) => void;
 }
 
 export interface AIConvertContext extends AIActionContext {
   mode: 'auto' | 'basic' | 'cloze';
 }
 
-export function getDefaultModel(provider: AIProvider): string {
-  switch (provider) {
-    case 'openai':
-      return 'gpt-4o-mini';
-    case 'anthropic':
-      return 'claude-sonnet-4-20250514';
-    case 'gemini':
-      return 'gemini-2.0-flash';
-  }
+export interface ComprehensiveFillContext {
+  sourceText: string;
+  fieldValues: Record<string, string>;
+  setFieldValues: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  values: Record<string, unknown>;
+  setValue: FormValueSetter;
+  models: Model[];
+  decks: DeckStats[];
+  availableTags: string[];
+  defaultDeck?: string;
+  handleModelSwitch: (modelName: string) => void;
+  setSuggestedTags: React.Dispatch<React.SetStateAction<string[]>>;
+  setQualityScore: React.Dispatch<React.SetStateAction<number>>;
 }

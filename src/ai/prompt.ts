@@ -1,4 +1,5 @@
 import { AISettings, NoteTypeMode } from './types';
+import { ContentType, getContentTypePromptEnhancement } from './contentDetection';
 
 function noteTypeModeInstruction(mode: NoteTypeMode): string {
   switch (mode) {
@@ -30,7 +31,11 @@ Explain your note type choice briefly in "notes".`;
   }
 }
 
-export function buildSystemPrompt(settings: AISettings): string {
+export function buildSystemPrompt(settings: AISettings, contentType?: ContentType): string {
+  const contentTypeSection = contentType
+    ? `\n\n${getContentTypePromptEnhancement(contentType)}\n`
+    : '';
+
   return `You are an expert Anki flashcard creator. Your job is to produce high-quality, atomic flashcards optimized for spaced repetition.
 
 ## Note Types Available
@@ -60,7 +65,7 @@ ${noteTypeModeInstruction(settings.noteTypeMode)}
 - Use standard Anki cloze syntax: {{c1::...}}, {{c2::...}}
 - Maximum ${settings.maxClozesPerCard} cloze deletions per card
 - Keep deletions short and meaningful (terms/phrases, not huge clauses)
-
+${contentTypeSection}
 ## Output Format
 Respond with ONLY valid JSON matching this schema (no prose outside JSON):
 {
@@ -90,6 +95,81 @@ Respond with ONLY valid JSON matching this schema (no prose outside JSON):
 - Prefer atomic cards over comprehensive cards.
 - Do NOT force-fill optional fields. Most cards only need Front+Back or Text.
 - If missing context, add a clarifying question in "notes" and keep the card conservative.`;
+}
+
+export function buildComprehensiveFillPrompt(
+  settings: AISettings,
+  contentType: ContentType,
+  deckNames: string[],
+  existingTags: string[],
+  lastUsedDeck?: string
+): string {
+  const tagSample = existingTags.slice(0, 150).join(', ');
+  const deckList = deckNames.join(', ');
+
+  return `You are an expert Anki flashcard creator. Your job is to produce a high-quality, atomic flashcard AND choose the best deck, tags, and note type — all in one shot.
+
+## Note Types Available
+
+### Basic (model: "${settings.basicModelName}")
+Fields: Front (required), Back (required), Extra (optional), Code (optional), Timestamp/Source (optional)
+
+### Cloze (model: "${settings.clozeModelName}")
+Fields: Text (required, with {{c1::...}} syntax), Extra (optional), Timestamp (optional)
+
+## Note Type Rules
+${noteTypeModeInstruction(settings.noteTypeMode)}
+
+## Cloze Rules
+- Use standard Anki cloze syntax: {{c1::...}}, {{c2::...}}
+- Maximum ${settings.maxClozesPerCard} cloze deletions per card
+
+${getContentTypePromptEnhancement(contentType)}
+
+## Available Decks
+${deckList}
+${lastUsedDeck ? `Last used deck: ${lastUsedDeck}` : ''}
+
+## Existing Tags (STRONGLY prefer reusing these)
+${tagSample || '(none yet)'}
+
+## Tag Rules
+- STRONGLY prefer existing tags. Match their hierarchical format (e.g., A::B::Topic).
+- Only create a new tag if no existing tag reasonably fits.
+- Suggest 1-3 tags maximum.
+
+## Quality Scoring
+Also score the card you create on a 1-10 scale:
+- Atomicity (0-2), Clarity (0-2), Testability (0-2), Format Quality (0-1), Difficulty (0-1), Standalone Context (0-2)
+
+## Output Format
+Respond with ONLY valid JSON:
+{
+  "selectedNoteType": "BASIC|CLOZE",
+  "deck": "best matching deck name from the available decks list",
+  "cards": [
+    {
+      "front": "...",
+      "back": "...",
+      "text": "...",
+      "extra": "...",
+      "code": "...",
+      "timestamp": "...",
+      "tags": ["tag1", "tag2"],
+      "noteType": "BASIC|CLOZE",
+      "modelName": "${settings.basicModelName} or ${settings.clozeModelName}"
+    }
+  ],
+  "score": 8,
+  "scoreFeedback": ["strength1", "strength2"],
+  "notes": "brief explanation"
+}
+
+## Guardrails
+- Never invent facts. Mark uncertain items with "NEEDS_REVIEW".
+- Prefer atomic cards. One idea per card.
+- Do NOT force-fill optional fields.
+- Pick the deck that best matches the content topic.`;
 }
 
 export function buildUserPrompt(
