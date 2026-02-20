@@ -68,7 +68,7 @@ export function buildScoringMessages(cards: AICard[], noteType?: NoteType): Mess
   ];
 }
 
-function gradeFromScore(score: number): CardScore['grade'] {
+export function gradeFromScore(score: number): CardScore['grade'] {
   if (score >= 9) return 'Excellent';
   if (score >= 7) return 'Good';
   if (score >= 5) return 'Needs Work';

@@ -15,7 +15,7 @@ import {
 import { buildSystemPrompt, buildUserPrompt, buildComprehensiveFillPrompt } from './prompt';
 import { parseAIResponse } from './parser';
 import { mapAICardToAnkiFields } from './fieldMapper';
-import { buildScoringMessages, parseScoreResponse, CardScore } from './scoring';
+import { buildScoringMessages, parseScoreResponse, CardScore, gradeFromScore } from './scoring';
 import { buildAutoFillMessages, parseAutoFillResponse, AutoFillResult } from './autoFill';
 import { detectContentType, getContentTypeLabel } from './contentDetection';
 
@@ -283,6 +283,11 @@ export async function handleComprehensiveFill(ctx: ComprehensiveFillContext): Pr
 
     if (response.score) {
       ctx.setQualityScore(response.score);
+      ctx.setLastScoreResult({
+        score: response.score,
+        grade: gradeFromScore(response.score),
+        feedback: response.scoreFeedback || ['Score generated during AI fill'],
+      });
     }
 
     const scorePart = response.score ? ` · Score: ${response.score}/10` : '';

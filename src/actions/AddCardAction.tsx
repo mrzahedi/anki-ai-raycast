@@ -77,10 +77,12 @@ export default function AddCardAction({ deckName }: Props) {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [draftText, setDraftText] = useState('');
   const [qualityScore, setQualityScore] = useState(0);
+  const [lastScoreResult, setLastScoreResult] = useState<CardScore | null>(null);
   const [addedCount, setAddedCount] = useState(0);
   const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
   const [generateMultiple, setGenerateMultiple] = useState(false);
   const [cardCount, setCardCount] = useState('5');
+  const isAIUpdating = useRef(false);
 
   const { allow_empty_card_fields, enable_attachments } =
     getPreferenceValues<Preferences.AddCard>();
@@ -116,12 +118,15 @@ export default function AddCardAction({ deckName }: Props) {
             const scoreResult = await scoreSingleCard(prepared.scoreCard, prepared.noteType);
             setQualityScore(scoreResult.score);
 
+            setLastScoreResult(scoreResult);
             push(
               <ScoreBeforeAddDetail
                 score={scoreResult}
                 onApplyImprovement={() => {
                   if (scoreResult.improvedCard) {
+                    isAIUpdating.current = true;
                     applyImprovement(scoreResult.improvedCard);
+                    setTimeout(() => { isAIUpdating.current = false; }, 100);
                   }
                 }}
                 onConfirmAdd={async () => {
@@ -377,6 +382,7 @@ export default function AddCardAction({ deckName }: Props) {
     setFieldValues({});
     setDraftText('');
     setQualityScore(0);
+    setLastScoreResult(null);
     setSuggestedTags([]);
     setGenerateMultiple(false);
     setCardCount('5');
@@ -396,7 +402,10 @@ export default function AddCardAction({ deckName }: Props) {
       const previousModel = values.modelName;
       setValue('modelName', nextModel);
       void persistModel(nextModel);
-      setQualityScore(0);
+      if (!isAIUpdating.current) {
+        setQualityScore(0);
+        setLastScoreResult(null);
+      }
 
       if (previousModel && previousModel !== nextModel) {
         clearModelFields(previousModel);
@@ -415,7 +424,10 @@ export default function AddCardAction({ deckName }: Props) {
       const previousModel = values.modelName;
       setValue('modelName', nextModel);
       void persistModel(nextModel);
-      setQualityScore(0);
+      if (!isAIUpdating.current) {
+        setQualityScore(0);
+        setLastScoreResult(null);
+      }
 
       if (previousModel && previousModel !== nextModel) {
         if (models) {
@@ -449,12 +461,17 @@ export default function AddCardAction({ deckName }: Props) {
       const { scoreSingleCard } = await import('../ai');
       const scoreResult = await scoreSingleCard(prepared.scoreCard, prepared.noteType);
       setQualityScore(scoreResult.score);
+      setLastScoreResult(scoreResult);
       push(
         <ScoreDetailView
           score={scoreResult}
           hasImprovement={!!scoreResult.improvedCard}
           onApplyImprovement={() => {
-            if (scoreResult.improvedCard) applyImprovement(scoreResult.improvedCard);
+            if (scoreResult.improvedCard) {
+              isAIUpdating.current = true;
+              applyImprovement(scoreResult.improvedCard);
+              setTimeout(() => { isAIUpdating.current = false; }, 100);
+            }
           }}
         />
       );
@@ -508,7 +525,10 @@ export default function AddCardAction({ deckName }: Props) {
                 value={fieldValues[`field_${field.name}`] || ''}
                 onChange={next => {
                   setFieldValues(prev => ({ ...prev, [`field_${field.name}`]: next }));
-                  setQualityScore(0);
+                  if (!isAIUpdating.current) {
+                    setQualityScore(0);
+                    setLastScoreResult(null);
+                  }
                 }}
               />
               {isTimestamp && (
@@ -608,21 +628,27 @@ export default function AddCardAction({ deckName }: Props) {
                       return;
                     }
 
-                    const { handleComprehensiveFill } = await import('../ai');
-                    await handleComprehensiveFill({
-                      sourceText: draftText,
-                      fieldValues,
-                      setFieldValues,
-                      values,
-                      setValue: formSetValue,
-                      models: models || [],
-                      decks: decks || [],
-                      availableTags: tags || [],
-                      defaultDeck,
-                      handleModelSwitch: handleModelSwitchWithFields,
-                      setSuggestedTags,
-                      setQualityScore,
-                    });
+                    isAIUpdating.current = true;
+                    try {
+                      const { handleComprehensiveFill } = await import('../ai');
+                      await handleComprehensiveFill({
+                        sourceText: draftText,
+                        fieldValues,
+                        setFieldValues,
+                        values,
+                        setValue: formSetValue,
+                        models: models || [],
+                        decks: decks || [],
+                        availableTags: tags || [],
+                        defaultDeck,
+                        handleModelSwitch: handleModelSwitchWithFields,
+                        setSuggestedTags,
+                        setQualityScore,
+                        setLastScoreResult,
+                      });
+                    } finally {
+                      setTimeout(() => { isAIUpdating.current = false; }, 100);
+                    }
                   }}
                 />
                 <Action
@@ -645,16 +671,21 @@ export default function AddCardAction({ deckName }: Props) {
                       });
                       return;
                     }
-                    const { handleAIImprove } = await import('../ai');
-                    await handleAIImprove({
-                      fieldValues,
-                      setFieldValues,
-                      values,
-                      setValue: formSetValue,
-                      models: models || [],
-                      availableTags: tags || [],
-                      handleModelSwitch: handleModelSwitchWithFields,
-                    });
+                    isAIUpdating.current = true;
+                    try {
+                      const { handleAIImprove } = await import('../ai');
+                      await handleAIImprove({
+                        fieldValues,
+                        setFieldValues,
+                        values,
+                        setValue: formSetValue,
+                        models: models || [],
+                        availableTags: tags || [],
+                        handleModelSwitch: handleModelSwitchWithFields,
+                      });
+                    } finally {
+                      setTimeout(() => { isAIUpdating.current = false; }, 100);
+                    }
                   }}
                 />
                 <Action
@@ -713,17 +744,22 @@ export default function AddCardAction({ deckName }: Props) {
                     const currentIsCloze = values.modelName === clozeName;
                     const targetMode = currentIsCloze ? 'basic' : 'cloze';
 
-                    const { handleAIConvert } = await import('../ai');
-                    await handleAIConvert({
-                      mode: targetMode,
-                      fieldValues,
-                      setFieldValues,
-                      values,
-                      setValue: formSetValue,
-                      models: models || [],
-                      availableTags: tags || [],
-                      handleModelSwitch: handleModelSwitchWithFields,
-                    });
+                    isAIUpdating.current = true;
+                    try {
+                      const { handleAIConvert } = await import('../ai');
+                      await handleAIConvert({
+                        mode: targetMode,
+                        fieldValues,
+                        setFieldValues,
+                        values,
+                        setValue: formSetValue,
+                        models: models || [],
+                        availableTags: tags || [],
+                        handleModelSwitch: handleModelSwitchWithFields,
+                      });
+                    } finally {
+                      setTimeout(() => { isAIUpdating.current = false; }, 100);
+                    }
                   }}
                 />
                 <Action
@@ -749,6 +785,31 @@ export default function AddCardAction({ deckName }: Props) {
                     await handleAIScoreAction();
                   }}
                 />
+                {qualityScore > 0 && (
+                  <Action
+                    title="View Score Details"
+                    shortcut={{ modifiers: ['ctrl'], key: 'd' }}
+                    onAction={async () => {
+                      if (lastScoreResult) {
+                        push(
+                          <ScoreDetailView
+                            score={lastScoreResult}
+                            hasImprovement={!!lastScoreResult.improvedCard}
+                            onApplyImprovement={() => {
+                              if (lastScoreResult.improvedCard) {
+                                isAIUpdating.current = true;
+                                applyImprovement(lastScoreResult.improvedCard);
+                                setTimeout(() => { isAIUpdating.current = false; }, 100);
+                              }
+                            }}
+                          />
+                        );
+                      } else {
+                        await handleAIScoreAction();
+                      }
+                    }}
+                  />
+                )}
               </ActionPanel.Section>
             </ActionPanel>
           }
@@ -765,7 +826,10 @@ export default function AddCardAction({ deckName }: Props) {
                 value={draftText}
                 onChange={next => {
                   setDraftText(next);
-                  setQualityScore(0);
+                  if (!isAIUpdating.current) {
+                    setQualityScore(0);
+                    setLastScoreResult(null);
+                  }
                 }}
               />
               <Form.Description text="Ctrl+A — AI fills all fields, selects deck, note type, tags, and scores" />
@@ -776,7 +840,7 @@ export default function AddCardAction({ deckName }: Props) {
           {ai_enabled && (
             <>
               <Form.Description title="AI Score" text={`Card Quality: ${qualityScore}/10`} />
-              <Form.Description text="Ctrl+Q — Score card quality" />
+              <Form.Description text={qualityScore > 0 ? 'Ctrl+D — View score details · Ctrl+Q — Re-score' : 'Ctrl+Q — Score card quality'} />
             </>
           )}
 

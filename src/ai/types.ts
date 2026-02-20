@@ -1,4 +1,5 @@
 import { DeckStats, Model } from '../types';
+import type { CardScore } from './scoring';
 
 export const DEFAULT_MODEL = 'google/gemini-2.0-flash';
 
@@ -75,4 +76,5 @@ export interface ComprehensiveFillContext {
   handleModelSwitch: (modelName: string) => void;
   setSuggestedTags: React.Dispatch<React.SetStateAction<string[]>>;
   setQualityScore: React.Dispatch<React.SetStateAction<number>>;
+  setLastScoreResult: React.Dispatch<React.SetStateAction<CardScore | null>>;
 }
