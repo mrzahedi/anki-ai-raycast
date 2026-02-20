@@ -239,13 +239,6 @@
       "subtitle": "Anki",
       "description": "View Anki collection statistics",
       "mode": "view"
-    },
-    {
-      "name": "generateCards",
-      "title": "Generate Cards from Notes",
-      "subtitle": "Anki",
-      "description": "Use AI to generate multiple flashcards from pasted notes",
-      "mode": "view"
     }
   ],
   "dependencies": {
