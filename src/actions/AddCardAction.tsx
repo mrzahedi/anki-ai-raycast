@@ -1,7 +1,6 @@
 import {
   Action,
   ActionPanel,
-  Clipboard,
   Detail,
   Form,
   getPreferenceValues,
@@ -23,6 +22,7 @@ import { isValidFileType, transformSubmittedData } from '../util';
 import useErrorHandling from '../hooks/useErrorHandling';
 import { useDefaults } from '../hooks/useDefaults';
 import { useDraftPersistence } from '../hooks/useDraftPersistence';
+import { ReviewCardsList } from '../components/ReviewCardsList';
 
 interface Props {
   deckName?: string;
@@ -43,7 +43,7 @@ function trimToSingleLine(text: string, max = 60): string {
 }
 
 export default function AddCardAction({ deckName }: Props) {
-  const { push, pop } = useNavigation();
+  const { push } = useNavigation();
   const { handleError, errorMarkdown } = useErrorHandling();
   const {
     defaultDeck,
@@ -73,14 +73,16 @@ export default function AddCardAction({ deckName }: Props) {
 
   const tagsCardRef = useRef<Form.TagPicker>(null);
   const fieldRefs = useRef<Record<string, FieldRef>>({});
-  const autoFillAttemptedRef = useRef(false);
 
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [draftText, setDraftText] = useState('');
   const [qualityScore, setQualityScore] = useState(0);
   const [addedCount, setAddedCount] = useState(0);
+  const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
+  const [generateMultiple, setGenerateMultiple] = useState(false);
+  const [cardCount, setCardCount] = useState('5');
 
-  const { allow_empty_card_fields, enable_attachments, show_draft_field } =
+  const { allow_empty_card_fields, enable_attachments } =
     getPreferenceValues<Preferences.AddCard>();
 
   const prefs = getPreferenceValues<Preferences>();
@@ -100,7 +102,7 @@ export default function AddCardAction({ deckName }: Props) {
         modelName: defaultModel || '',
         tags: defaultTags,
       },
-      onSubmit: async (submittedValues) => {
+      onSubmit: async submittedValues => {
         const prepared = buildSubmission(submittedValues);
         if (!prepared) return;
 
@@ -256,7 +258,9 @@ export default function AddCardAction({ deckName }: Props) {
         text: fieldByName('Text') || undefined,
         extra: fieldByName('Extra') || undefined,
         code: fieldByName('Code') || undefined,
-        timestamp: timestampField ? resolveFieldValue(mergedValues, timestampField.name) : undefined,
+        timestamp: timestampField
+          ? resolveFieldValue(mergedValues, timestampField.name)
+          : undefined,
         tags: submittedValues.tags || [],
         noteType,
       };
@@ -290,11 +294,16 @@ export default function AddCardAction({ deckName }: Props) {
       const nextValues: Record<string, string> = {};
       for (const field of selectedModel.flds) {
         const lower = field.name.toLowerCase();
-        if (lower === 'front' && card.front !== undefined) nextValues[`field_${field.name}`] = card.front;
-        if (lower === 'back' && card.back !== undefined) nextValues[`field_${field.name}`] = card.back;
-        if (lower === 'text' && card.text !== undefined) nextValues[`field_${field.name}`] = card.text;
-        if (lower === 'extra' && card.extra !== undefined) nextValues[`field_${field.name}`] = card.extra;
-        if (lower === 'code' && card.code !== undefined) nextValues[`field_${field.name}`] = card.code;
+        if (lower === 'front' && card.front !== undefined)
+          nextValues[`field_${field.name}`] = card.front;
+        if (lower === 'back' && card.back !== undefined)
+          nextValues[`field_${field.name}`] = card.back;
+        if (lower === 'text' && card.text !== undefined)
+          nextValues[`field_${field.name}`] = card.text;
+        if (lower === 'extra' && card.extra !== undefined)
+          nextValues[`field_${field.name}`] = card.extra;
+        if (lower === 'code' && card.code !== undefined)
+          nextValues[`field_${field.name}`] = card.code;
         if (lower.includes('timestamp') && card.timestamp !== undefined) {
           nextValues[`field_${field.name}`] = card.timestamp;
         }
@@ -305,6 +314,7 @@ export default function AddCardAction({ deckName }: Props) {
       }
 
       if (card.tags && card.tags.length > 0) {
+        setSuggestedTags(prev => [...new Set([...prev, ...card.tags])]);
         const currentTags = values.tags || [];
         setValue('tags', [...new Set([...currentTags, ...card.tags])]);
       }
@@ -316,7 +326,8 @@ export default function AddCardAction({ deckName }: Props) {
     async (prepared: PreparedSubmission) => {
       try {
         const noteId = await noteActions.addNote(prepared.requestBody);
-        const tagSummary = prepared.tags.length > 0 ? ` · ${prepared.tags.slice(0, 2).join(', ')}` : '';
+        const tagSummary =
+          prepared.tags.length > 0 ? ` · ${prepared.tags.slice(0, 2).join(', ')}` : '';
 
         showToast({
           style: Toast.Style.Success,
@@ -366,6 +377,9 @@ export default function AddCardAction({ deckName }: Props) {
     setFieldValues({});
     setDraftText('');
     setQualityScore(0);
+    setSuggestedTags([]);
+    setGenerateMultiple(false);
+    setCardCount('5');
     setTimeout(() => focus('deckName'), 0);
   }, [clearModelFields, reset, values.modelName, focus]);
 
@@ -392,13 +406,36 @@ export default function AddCardAction({ deckName }: Props) {
     [values.modelName, setValue, persistModel, clearModelFields]
   );
 
+  /**
+   * Switch model AND apply new field values atomically.
+   * Used by AI actions that change note type (convert, comprehensive fill).
+   */
+  const handleModelSwitchWithFields = useCallback(
+    (nextModel: string) => {
+      const previousModel = values.modelName;
+      setValue('modelName', nextModel);
+      void persistModel(nextModel);
+      setQualityScore(0);
+
+      if (previousModel && previousModel !== nextModel) {
+        if (models) {
+          const oldModel = models.find(m => m.name === previousModel);
+          if (oldModel) {
+            for (const field of oldModel.flds) {
+              formSetValue(`field_${field.name}`, '');
+              setValidationError(`field_${field.name}`, undefined);
+            }
+          }
+        }
+      }
+    },
+    [values.modelName, setValue, persistModel, models, formSetValue, setValidationError]
+  );
+
   const handleFileChange = (fieldName: string, files: string[]) => {
     const invalidFiles = files.filter(file => !isValidFileType(file));
     if (invalidFiles.length > 0) {
-      setValidationError(
-        `file_${fieldName}`,
-        `Invalid file type(s): ${invalidFiles.join(', ')}`
-      );
+      setValidationError(`file_${fieldName}`, `Invalid file type(s): ${invalidFiles.join(', ')}`);
     } else {
       setValidationError(`file_${fieldName}`, undefined);
     }
@@ -426,89 +463,6 @@ export default function AddCardAction({ deckName }: Props) {
     }
   }, [buildSubmission, values, push, applyImprovement, handleError]);
 
-  // AI auto-fill from clipboard on open
-  useEffect(() => {
-    if (autoFillAttemptedRef.current) return;
-    if (!ai_enabled || !prefs.ai_api_key) return;
-    if (decksLoading || modelsLoading || tagsLoading || !decks || !models || !tags) return;
-
-    const hasExistingData =
-      draftText.trim().length > 0 ||
-      Object.values(fieldValues).some(v => typeof v === 'string' && v.trim().length > 0);
-    if (hasExistingData) return;
-
-    autoFillAttemptedRef.current = true;
-
-    void (async () => {
-      try {
-        const clipText = (await Clipboard.readText())?.trim() || '';
-        if (clipText.length < 10) return;
-
-        const { handleAutoFill } = await import('../ai');
-        const deckNames = decks.map(d => d.name);
-        const noteTypeNames = models.map(m => m.name);
-        const noteTypeFields: Record<string, string[]> = {};
-        for (const m of models) {
-          noteTypeFields[m.name] = m.flds.map(f => f.name);
-        }
-
-        const result = await handleAutoFill(
-          clipText,
-          deckNames,
-          noteTypeNames,
-          noteTypeFields,
-          tags,
-          defaultDeck,
-          defaultModel
-        );
-
-        if (!result || result.confidence === 0) return;
-
-        if (result.deck && deckNames.includes(result.deck)) {
-          setValue('deckName', result.deck);
-          void persistDeck(result.deck);
-        }
-
-        const basicName = prefs.basic_model_name || 'Basic';
-        const clozeName = prefs.cloze_model_name || 'Cloze';
-        const targetModel = result.noteType === 'CLOZE' ? clozeName : basicName;
-        const matchedModel = models.find(m => m.name === targetModel);
-        if (matchedModel) {
-          setValue('modelName', matchedModel.name);
-          void persistModel(matchedModel.name);
-        }
-
-        if (result.fields && Object.keys(result.fields).length > 0) {
-          const updates: Record<string, string> = {};
-          for (const [key, val] of Object.entries(result.fields)) {
-            if (val) updates[`field_${key}`] = val;
-          }
-          setFieldValues(prev => ({ ...prev, ...updates }));
-        }
-
-        if (result.tags && result.tags.length > 0) {
-          const currentTags = defaultTags || [];
-          const merged = [...new Set([...currentTags, ...result.tags])];
-          setValue('tags', merged);
-        }
-      } catch {
-        // Silently ignore auto-fill errors
-      }
-    })();
-  }, [
-    ai_enabled,
-    decks,
-    models,
-    tags,
-    draftText,
-    fieldValues,
-    values.deckName,
-    values.modelName,
-    decksLoading,
-    modelsLoading,
-    tagsLoading,
-  ]);
-
   const sortedDecks = useMemo(() => {
     if (!decks) return [];
     const lastDeck = defaultDeck;
@@ -517,6 +471,16 @@ export default function AddCardAction({ deckName }: Props) {
     const rest = decks.filter(d => d.name !== lastDeck);
     return [...recent, ...rest];
   }, [decks, defaultDeck]);
+
+  const allTags = useMemo(() => {
+    const set = new Set([...(tags || []), ...suggestedTags]);
+    return [...set].sort();
+  }, [tags, suggestedTags]);
+
+  const isTimestampField = useCallback((fieldName: string) => {
+    const lower = fieldName.toLowerCase();
+    return lower.includes('timestamp') || lower === 'source' || lower === 'timestamp/source';
+  }, []);
 
   const dynamicFields = useMemo(() => {
     if (!selectedModel) return null;
@@ -529,23 +493,27 @@ export default function AddCardAction({ deckName }: Props) {
             fieldRefs.current[`file_${field.name}`] = React.createRef<Form.FilePicker>();
           }
 
+          const isTimestamp = isTimestampField(field.name);
+          const placeholder = isTimestamp
+            ? 'e.g., CS50 W2 12:34, LeetCode #42, youtube.com/...'
+            : `Enter ${field.name}`;
+
           return (
             <React.Fragment key={field.name}>
               <Form.TextArea
                 id={`field_${field.name}`}
                 title={field.name}
-                placeholder={`Enter ${field.name}`}
+                placeholder={placeholder}
                 ref={textAreaRef}
-                value={
-                  fieldValues[`field_${field.name}`] ??
-                  (values[`field_${field.name}`] as string | undefined) ??
-                  ''
-                }
+                value={fieldValues[`field_${field.name}`] || ''}
                 onChange={next => {
                   setFieldValues(prev => ({ ...prev, [`field_${field.name}`]: next }));
                   setQualityScore(0);
                 }}
               />
+              {isTimestamp && (
+                <Form.Description text="Add your source reference here (URL, book, lecture, etc.)" />
+              )}
               {enable_attachments && (
                 <Form.FilePicker
                   id={`file_${field.name}`}
@@ -559,7 +527,7 @@ export default function AddCardAction({ deckName }: Props) {
         })}
       </>
     );
-  }, [selectedModel, enable_attachments, fieldValues, values, setValidationError]);
+  }, [selectedModel, enable_attachments, fieldValues, isTimestampField]);
 
   const navTitle = addedCount > 0 ? `Add Card (${addedCount} added)` : 'Add Card';
   const aiActionsDisabled = !ai_enabled;
@@ -586,26 +554,74 @@ export default function AddCardAction({ deckName }: Props) {
 
               <ActionPanel.Section title="AI Assist">
                 <Action
-                  title={ai_enabled ? 'AI: Fill from Notes' : 'AI: Fill from Notes (Disabled)'}
+                  title={ai_enabled ? 'AI: Fill from Source' : 'AI: Fill from Source (Disabled)'}
                   shortcut={{ modifiers: ['ctrl'], key: 'a' }}
                   onAction={async () => {
                     if (aiActionsDisabled) {
-                      await showToast({ style: Toast.Style.Failure, title: 'AI is disabled', message: 'Enable AI Assist in extension preferences.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'AI is disabled',
+                        message: 'Enable AI Assist in extension preferences.',
+                      });
                       return;
                     }
                     if (!draftText.trim()) {
-                      await showToast({ style: Toast.Style.Failure, title: 'No source notes', message: 'Paste notes into Source Notes first.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'No source material',
+                        message: 'Paste content into AI Source Material first.',
+                      });
                       return;
                     }
-                    const { handleAIAutocomplete } = await import('../ai');
-                    await handleAIAutocomplete({
-                      draftText,
+
+                    if (generateMultiple) {
+                      const n = parseInt(cardCount, 10);
+                      if (isNaN(n) || n < 1 || n > 20) {
+                        await showToast({
+                          style: Toast.Style.Failure,
+                          title: 'Card count must be 1-20',
+                        });
+                        return;
+                      }
+                      try {
+                        await showToast({
+                          style: Toast.Style.Animated,
+                          title: 'Generating multiple cards...',
+                        });
+                        const { generateCardsFromDraft } = await import('../ai');
+                        const response = await generateCardsFromDraft(draftText, n);
+                        push(
+                          <ReviewCardsList
+                            response={response}
+                            preSelectedDeck={values.deckName}
+                            preSelectedTags={values.tags}
+                          />
+                        );
+                      } catch (error) {
+                        const msg = error instanceof Error ? error.message : String(error);
+                        await showToast({
+                          style: Toast.Style.Failure,
+                          title: 'Generation failed',
+                          message: msg.slice(0, 120),
+                        });
+                      }
+                      return;
+                    }
+
+                    const { handleComprehensiveFill } = await import('../ai');
+                    await handleComprehensiveFill({
+                      sourceText: draftText,
                       fieldValues,
                       setFieldValues,
                       values,
                       setValue: formSetValue,
                       models: models || [],
+                      decks: decks || [],
                       availableTags: tags || [],
+                      defaultDeck,
+                      handleModelSwitch: handleModelSwitchWithFields,
+                      setSuggestedTags,
+                      setQualityScore,
                     });
                   }}
                 />
@@ -614,11 +630,19 @@ export default function AddCardAction({ deckName }: Props) {
                   shortcut={{ modifiers: ['ctrl'], key: 'i' }}
                   onAction={async () => {
                     if (aiActionsDisabled) {
-                      await showToast({ style: Toast.Style.Failure, title: 'AI is disabled', message: 'Enable AI Assist in extension preferences.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'AI is disabled',
+                        message: 'Enable AI Assist in extension preferences.',
+                      });
                       return;
                     }
                     if (!hasCardContent) {
-                      await showToast({ style: Toast.Style.Failure, title: 'No card content', message: 'Fill card fields first.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'No card content',
+                        message: 'Fill card fields first.',
+                      });
                       return;
                     }
                     const { handleAIImprove } = await import('../ai');
@@ -629,6 +653,7 @@ export default function AddCardAction({ deckName }: Props) {
                       setValue: formSetValue,
                       models: models || [],
                       availableTags: tags || [],
+                      handleModelSwitch: handleModelSwitchWithFields,
                     });
                   }}
                 />
@@ -637,11 +662,19 @@ export default function AddCardAction({ deckName }: Props) {
                   shortcut={{ modifiers: ['ctrl'], key: 't' }}
                   onAction={async () => {
                     if (aiActionsDisabled) {
-                      await showToast({ style: Toast.Style.Failure, title: 'AI is disabled', message: 'Enable AI Assist in extension preferences.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'AI is disabled',
+                        message: 'Enable AI Assist in extension preferences.',
+                      });
                       return;
                     }
                     if (!hasCardContent) {
-                      await showToast({ style: Toast.Style.Failure, title: 'No card content', message: 'Fill card fields first.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'No card content',
+                        message: 'Fill card fields first.',
+                      });
                       return;
                     }
                     const { handleAISuggestTags } = await import('../ai');
@@ -652,6 +685,7 @@ export default function AddCardAction({ deckName }: Props) {
                       setValue: formSetValue,
                       models: models || [],
                       availableTags: tags || [],
+                      setSuggestedTags,
                     });
                   }}
                 />
@@ -660,22 +694,35 @@ export default function AddCardAction({ deckName }: Props) {
                   shortcut={{ modifiers: ['ctrl'], key: 'b' }}
                   onAction={async () => {
                     if (aiActionsDisabled) {
-                      await showToast({ style: Toast.Style.Failure, title: 'AI is disabled', message: 'Enable AI Assist in extension preferences.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'AI is disabled',
+                        message: 'Enable AI Assist in extension preferences.',
+                      });
                       return;
                     }
                     if (!hasCardContent) {
-                      await showToast({ style: Toast.Style.Failure, title: 'No card content', message: 'Fill card fields first.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'No card content',
+                        message: 'Fill card fields first.',
+                      });
                       return;
                     }
+                    const clozeName = prefs.cloze_model_name || 'Cloze';
+                    const currentIsCloze = values.modelName === clozeName;
+                    const targetMode = currentIsCloze ? 'basic' : 'cloze';
+
                     const { handleAIConvert } = await import('../ai');
                     await handleAIConvert({
-                      mode: 'auto',
+                      mode: targetMode,
                       fieldValues,
                       setFieldValues,
                       values,
                       setValue: formSetValue,
                       models: models || [],
                       availableTags: tags || [],
+                      handleModelSwitch: handleModelSwitchWithFields,
                     });
                   }}
                 />
@@ -684,11 +731,19 @@ export default function AddCardAction({ deckName }: Props) {
                   shortcut={{ modifiers: ['ctrl'], key: 'q' }}
                   onAction={async () => {
                     if (aiActionsDisabled) {
-                      await showToast({ style: Toast.Style.Failure, title: 'AI is disabled', message: 'Enable AI Assist in extension preferences.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'AI is disabled',
+                        message: 'Enable AI Assist in extension preferences.',
+                      });
                       return;
                     }
                     if (!hasCardContent) {
-                      await showToast({ style: Toast.Style.Failure, title: 'No card content', message: 'Fill card fields first.' });
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'No card content',
+                        message: 'Fill card fields first.',
+                      });
                       return;
                     }
                     await handleAIScoreAction();
@@ -700,6 +755,32 @@ export default function AddCardAction({ deckName }: Props) {
           navigationTitle={navTitle}
           isLoading={decksLoading || modelsLoading || tagsLoading || defaultsLoading}
         >
+          {/* === AI Source Material (top of form when AI is enabled) === */}
+          {ai_enabled && (
+            <>
+              <Form.TextArea
+                id="draft"
+                title="AI Source Material"
+                placeholder="Paste your raw notes, lecture content, or study material here. Press Ctrl+A to let AI fill everything."
+                value={draftText}
+                onChange={next => {
+                  setDraftText(next);
+                  setQualityScore(0);
+                }}
+              />
+              <Form.Description text="Ctrl+A — AI fills all fields, selects deck, note type, tags, and scores" />
+            </>
+          )}
+
+          {/* === AI Score === */}
+          {ai_enabled && (
+            <>
+              <Form.Description title="AI Score" text={`Card Quality: ${qualityScore}/10`} />
+              <Form.Description text="Ctrl+Q — Score card quality" />
+            </>
+          )}
+
+          {/* === Deck === */}
           <Form.Dropdown
             id="deckName"
             title="Deck"
@@ -724,6 +805,7 @@ export default function AddCardAction({ deckName }: Props) {
             </Form.Dropdown.Section>
           </Form.Dropdown>
 
+          {/* === Note Type === */}
           <Form.Dropdown
             id="modelName"
             title="Note Type"
@@ -736,41 +818,49 @@ export default function AddCardAction({ deckName }: Props) {
               <Form.Dropdown.Item key={model.id} title={model.name} value={model.name} />
             ))}
           </Form.Dropdown>
+          {ai_enabled && <Form.Description text="Ctrl+B — Switch between Basic and Cloze" />}
 
-          {show_draft_field && (
+          {/* === Generate Multiple Cards toggle === */}
+          {ai_enabled && (
             <>
-              <Form.TextArea
-                id="draft"
-                title="Source Notes"
-                placeholder="Paste your raw notes, lecture content, or study material here. AI will use this to fill card fields."
-                value={draftText}
-                onChange={next => {
-                  setDraftText(next);
-                  setQualityScore(0);
-                }}
+              <Form.Checkbox
+                id="generateMultiple"
+                label="Generate Multiple Cards"
+                value={generateMultiple}
+                onChange={setGenerateMultiple}
               />
-              <Form.Description
-                title="AI Fill"
-                text={'Use Ctrl+A or "AI: Fill from Notes" to populate fields from Source Notes.'}
-              />
+              {generateMultiple && (
+                <Form.TextField
+                  id="cardCount"
+                  title="Number of Cards"
+                  placeholder="5"
+                  value={cardCount}
+                  onChange={setCardCount}
+                />
+              )}
             </>
           )}
 
           <Form.Separator />
 
+          {/* === Dynamic Card Fields === */}
           {dynamicFields}
-
-          <Form.Description title="AI Score" text={`Card Quality: ${qualityScore}/10`} />
 
           <Form.Separator />
 
-          <Form.TagPicker id="tags" title="Tags" value={values.tags || []} ref={tagsCardRef} onChange={next => setValue('tags', next)}>
-            {tags?.map(tag => <Form.TagPicker.Item key={tag} value={tag} title={tag} />)}
+          {/* === Tags === */}
+          <Form.TagPicker
+            id="tags"
+            title="Tags"
+            value={values.tags || []}
+            ref={tagsCardRef}
+            onChange={next => setValue('tags', next)}
+          >
+            {allTags.map(tag => (
+              <Form.TagPicker.Item key={tag} value={tag} title={tag} />
+            ))}
           </Form.TagPicker>
-          <Form.Description
-            title="Tag Suggestions"
-            text={'Use Ctrl+T or "AI: Suggest Tags". Disabled until card fields have content.'}
-          />
+          {ai_enabled && <Form.Description text="Ctrl+T — AI suggests tags from card content" />}
         </Form>
       )}
     </>
