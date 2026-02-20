@@ -126,7 +126,9 @@ export default function AddCardAction({ deckName }: Props) {
                   if (scoreResult.improvedCard) {
                     isAIUpdating.current = true;
                     applyImprovement(scoreResult.improvedCard);
-                    setTimeout(() => { isAIUpdating.current = false; }, 100);
+                    setTimeout(() => {
+                      isAIUpdating.current = false;
+                    }, 100);
                   }
                 }}
                 onConfirmAdd={async () => {
@@ -470,7 +472,9 @@ export default function AddCardAction({ deckName }: Props) {
             if (scoreResult.improvedCard) {
               isAIUpdating.current = true;
               applyImprovement(scoreResult.improvedCard);
-              setTimeout(() => { isAIUpdating.current = false; }, 100);
+              setTimeout(() => {
+                isAIUpdating.current = false;
+              }, 100);
             }
           }}
         />
@@ -499,55 +503,12 @@ export default function AddCardAction({ deckName }: Props) {
     return lower.includes('timestamp') || lower === 'source' || lower === 'timestamp/source';
   }, []);
 
-  const dynamicFields = useMemo(() => {
-    if (!selectedModel) return null;
-    return (
-      <>
-        {selectedModel.flds.map(field => {
-          const textAreaRef = React.createRef<Form.TextArea>();
-          fieldRefs.current[`field_${field.name}`] = textAreaRef;
-          if (enable_attachments) {
-            fieldRefs.current[`file_${field.name}`] = React.createRef<Form.FilePicker>();
-          }
-
-          const isTimestamp = isTimestampField(field.name);
-          const placeholder = isTimestamp
-            ? 'e.g., CS50 W2 12:34, LeetCode #42, youtube.com/...'
-            : `Enter ${field.name}`;
-
-          return (
-            <React.Fragment key={field.name}>
-              <Form.TextArea
-                id={`field_${field.name}`}
-                title={field.name}
-                placeholder={placeholder}
-                ref={textAreaRef}
-                value={fieldValues[`field_${field.name}`] || ''}
-                onChange={next => {
-                  setFieldValues(prev => ({ ...prev, [`field_${field.name}`]: next }));
-                  if (!isAIUpdating.current) {
-                    setQualityScore(0);
-                    setLastScoreResult(null);
-                  }
-                }}
-              />
-              {isTimestamp && (
-                <Form.Description text="Add your source reference here (URL, book, lecture, etc.)" />
-              )}
-              {enable_attachments && (
-                <Form.FilePicker
-                  id={`file_${field.name}`}
-                  title={`${field.name} Files`}
-                  allowMultipleSelection
-                  onChange={files => handleFileChange(field.name, files)}
-                />
-              )}
-            </React.Fragment>
-          );
-        })}
-      </>
-    );
-  }, [selectedModel, enable_attachments, fieldValues, isTimestampField]);
+  const getFieldRef = useCallback((key: string) => {
+    if (!fieldRefs.current[key]) {
+      fieldRefs.current[key] = React.createRef();
+    }
+    return fieldRefs.current[key];
+  }, []);
 
   const navTitle = addedCount > 0 ? `Add Card (${addedCount} added)` : 'Add Card';
   const aiActionsDisabled = !ai_enabled;
@@ -647,7 +608,9 @@ export default function AddCardAction({ deckName }: Props) {
                         setLastScoreResult,
                       });
                     } finally {
-                      setTimeout(() => { isAIUpdating.current = false; }, 100);
+                      setTimeout(() => {
+                        isAIUpdating.current = false;
+                      }, 100);
                     }
                   }}
                 />
@@ -684,7 +647,9 @@ export default function AddCardAction({ deckName }: Props) {
                         handleModelSwitch: handleModelSwitchWithFields,
                       });
                     } finally {
-                      setTimeout(() => { isAIUpdating.current = false; }, 100);
+                      setTimeout(() => {
+                        isAIUpdating.current = false;
+                      }, 100);
                     }
                   }}
                 />
@@ -758,7 +723,9 @@ export default function AddCardAction({ deckName }: Props) {
                         handleModelSwitch: handleModelSwitchWithFields,
                       });
                     } finally {
-                      setTimeout(() => { isAIUpdating.current = false; }, 100);
+                      setTimeout(() => {
+                        isAIUpdating.current = false;
+                      }, 100);
                     }
                   }}
                 />
@@ -799,7 +766,9 @@ export default function AddCardAction({ deckName }: Props) {
                               if (lastScoreResult.improvedCard) {
                                 isAIUpdating.current = true;
                                 applyImprovement(lastScoreResult.improvedCard);
-                                setTimeout(() => { isAIUpdating.current = false; }, 100);
+                                setTimeout(() => {
+                                  isAIUpdating.current = false;
+                                }, 100);
                               }
                             }}
                           />
@@ -840,7 +809,13 @@ export default function AddCardAction({ deckName }: Props) {
           {ai_enabled && (
             <>
               <Form.Description title="AI Score" text={`Card Quality: ${qualityScore}/10`} />
-              <Form.Description text={qualityScore > 0 ? 'Ctrl+D — View score details · Ctrl+Q — Re-score' : 'Ctrl+Q — Score card quality'} />
+              <Form.Description
+                text={
+                  qualityScore > 0
+                    ? 'Ctrl+D — View score details · Ctrl+Q — Re-score'
+                    : 'Ctrl+Q — Score card quality'
+                }
+              />
             </>
           )}
 
@@ -908,7 +883,50 @@ export default function AddCardAction({ deckName }: Props) {
           <Form.Separator />
 
           {/* === Dynamic Card Fields === */}
-          {dynamicFields}
+          {selectedModel?.flds.map(field => {
+            const fieldKey = `field_${field.name}`;
+            const textAreaRef = getFieldRef(fieldKey);
+            if (enable_attachments) {
+              getFieldRef(`file_${field.name}`);
+            }
+            const isTimestamp = isTimestampField(field.name);
+            const placeholder = isTimestamp
+              ? 'e.g., CS50 W2 12:34, LeetCode #42, youtube.com/...'
+              : `Enter ${field.name}`;
+
+            return (
+              <React.Fragment key={field.name}>
+                <Form.TextArea
+                  id={fieldKey}
+                  title={field.name}
+                  placeholder={placeholder}
+                  ref={textAreaRef}
+                  value={fieldValues[fieldKey] || ''}
+                  onChange={next => {
+                    setFieldValues(prev => {
+                      if (prev[fieldKey] === next) return prev;
+                      return { ...prev, [fieldKey]: next };
+                    });
+                    if (!isAIUpdating.current) {
+                      setQualityScore(0);
+                      setLastScoreResult(null);
+                    }
+                  }}
+                />
+                {isTimestamp && (
+                  <Form.Description text="Add your source reference here (URL, book, lecture, etc.)" />
+                )}
+                {enable_attachments && (
+                  <Form.FilePicker
+                    id={`file_${field.name}`}
+                    title={`${field.name} Files`}
+                    allowMultipleSelection
+                    onChange={files => handleFileChange(field.name, files)}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
 
           <Form.Separator />
 
